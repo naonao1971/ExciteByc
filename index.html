@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Scramble Tunnel Prototype</title>
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: #07090f;
+      color: #e8ecff;
+      display: grid;
+      place-items: center;
+      min-height: 100vh;
+    }
+    .wrap {
+      text-align: center;
+    }
+    canvas {
+      width: min(92vw, 960px);
+      height: auto;
+      border: 1px solid #2a365f;
+      box-shadow: 0 0 32px rgba(90, 140, 255, 0.2);
+      background: linear-gradient(#02040a, #060b18);
+      image-rendering: pixelated;
+    }
+    .help {
+      margin-top: 10px;
+      color: #9db0ff;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <canvas id="game" width="960" height="540" aria-label="Scramble tunnel game"></canvas>
+    <div class="help">↑ / W で上昇、↓ / S で下降、Space でリスタート</div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+
+    const state = {
+      running: true,
+      score: 0,
+      speed: 2.6,
+      maxSpeed: 6.2,
+      columns: [],
+      stars: [],
+      frame: 0,
+      ship: {
+        x: 130,
+        y: canvas.height / 2,
+        vy: 0,
+        radius: 11
+      },
+      input: { up: false, down: false }
+    };
+
+    const tunnel = {
+      center: canvas.height / 2,
+      centerVel: 0,
+      gap: 170,
+      minGap: 96,
+      maxGap: 220,
+      roughness: 0.42
+    };
+
+    for (let i = 0; i < 160; i++) {
+      state.stars.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        z: 0.4 + Math.random() * 0.9
+      });
+    }
+
+    function seedColumns() {
+      state.columns.length = 0;
+      let localCenter = tunnel.center;
+      for (let x = 0; x < canvas.width; x++) {
+        state.columns.push(makeColumn(localCenter, tunnel.gap));
+      }
+    }
+
+    function makeColumn(center, gap) {
+      const half = gap * 0.5;
+      return {
+        top: Math.max(20, center - half),
+        bottom: Math.min(canvas.height - 20, center + half)
+      };
+    }
+
+    function resetGame() {
+      state.running = true;
+      state.score = 0;
+      state.speed = 2.6;
+      state.frame = 0;
+      state.ship.y = canvas.height / 2;
+      state.ship.vy = 0;
+
+      tunnel.center = canvas.height / 2;
+      tunnel.centerVel = 0;
+      tunnel.gap = 170;
+      seedColumns();
+    }
+
+    function updateTunnel() {
+      const drift = (Math.random() - 0.5) * tunnel.roughness;
+      tunnel.centerVel += drift;
+      tunnel.centerVel *= 0.96;
+      tunnel.center += tunnel.centerVel;
+      tunnel.center = Math.max(90, Math.min(canvas.height - 90, tunnel.center));
+
+      const wave = Math.sin(state.frame * 0.012) * 22;
+      const gapTarget = 145 + wave - Math.min(38, state.speed * 7);
+      tunnel.gap += (gapTarget - tunnel.gap) * 0.03;
+      tunnel.gap = Math.max(tunnel.minGap, Math.min(tunnel.maxGap, tunnel.gap));
+    }
+
+    function updateColumns() {
+      const step = state.speed;
+      for (let i = 0; i < step; i++) {
+        state.columns.shift();
+        updateTunnel();
+        state.columns.push(makeColumn(tunnel.center, tunnel.gap));
+      }
+    }
+
+    function updateShip() {
+      const thrust = 0.34;
+      const drag = 0.985;
+      if (state.input.up) state.ship.vy -= thrust;
+      if (state.input.down) state.ship.vy += thrust;
+      state.ship.vy *= drag;
+      state.ship.y += state.ship.vy;
+      state.ship.y = Math.max(0, Math.min(canvas.height, state.ship.y));
+    }
+
+    function checkCollision() {
+      const x = Math.floor(state.ship.x);
+      const column = state.columns[x];
+      if (!column) return false;
+      return (
+        state.ship.y - state.ship.radius < column.top ||
+        state.ship.y + state.ship.radius > column.bottom
+      );
+    }
+
+    function updateStars() {
+      for (const s of state.stars) {
+        s.x -= state.speed * s.z * 0.4;
+        if (s.x < -2) {
+          s.x = canvas.width + Math.random() * 16;
+          s.y = Math.random() * canvas.height;
+        }
+      }
+    }
+
+    function update() {
+      if (!state.running) return;
+      state.frame++;
+      state.speed = Math.min(state.maxSpeed, state.speed + 0.00075);
+      updateStars();
+      updateColumns();
+      updateShip();
+      if (checkCollision()) {
+        state.running = false;
+      } else {
+        state.score += 1;
+      }
+    }
+
+    function drawBackground() {
+      ctx.fillStyle = "#030611";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      for (const s of state.stars) {
+        const a = 0.3 + s.z * 0.5;
+        ctx.fillStyle = `rgba(180, 200, 255, ${a})`;
+        ctx.fillRect(s.x, s.y, s.z * 2, s.z * 2);
+      }
+    }
+
+    function drawTunnel() {
+      ctx.fillStyle = "#193164";
+      for (let x = 0; x < state.columns.length; x++) {
+        const c = state.columns[x];
+        ctx.fillRect(x, 0, 1, c.top);
+        ctx.fillRect(x, c.bottom, 1, canvas.height - c.bottom);
+      }
+
+      ctx.fillStyle = "#5ca2ff";
+      for (let x = 0; x < state.columns.length; x += 3) {
+        const c = state.columns[x];
+        ctx.fillRect(x, c.top - 2, 2, 2);
+        ctx.fillRect(x, c.bottom, 2, 2);
+      }
+    }
+
+    function drawShip() {
+      const { x, y, radius } = state.ship;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(state.ship.vy * 0.05);
+
+      ctx.fillStyle = "#ffd966";
+      ctx.beginPath();
+      ctx.moveTo(radius + 6, 0);
+      ctx.lineTo(-radius, -radius * 0.85);
+      ctx.lineTo(-radius + 4, 0);
+      ctx.lineTo(-radius, radius * 0.85);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = "#6fc2ff";
+      ctx.beginPath();
+      ctx.arc(-2, 0, 4, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (state.running) {
+        const flame = 8 + Math.random() * 8;
+        ctx.fillStyle = "#ff8c42";
+        ctx.beginPath();
+        ctx.moveTo(-radius + 2, 0);
+        ctx.lineTo(-radius - flame, -3);
+        ctx.lineTo(-radius - flame, 3);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    function drawHud() {
+      ctx.fillStyle = "#dbe6ff";
+      ctx.font = "20px ui-monospace, SFMono-Regular, Menlo, monospace";
+      ctx.fillText(`SCORE ${Math.floor(state.score / 8)}`, 20, 32);
+      ctx.fillText(`SPD ${state.speed.toFixed(2)}`, 20, 58);
+
+      if (!state.running) {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#ffffff";
+        ctx.textAlign = "center";
+        ctx.font = "bold 54px ui-sans-serif, system-ui";
+        ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2 - 20);
+        ctx.font = "24px ui-sans-serif, system-ui";
+        ctx.fillText("Space で再スタート", canvas.width / 2, canvas.height / 2 + 28);
+        ctx.textAlign = "left";
+      }
+    }
+
+    function render() {
+      drawBackground();
+      drawTunnel();
+      drawShip();
+      drawHud();
+    }
+
+    function loop() {
+      update();
+      render();
+      requestAnimationFrame(loop);
+    }
+
+    window.addEventListener("keydown", (e) => {
+      if (e.code === "ArrowUp" || e.code === "KeyW") {
+        state.input.up = true;
+        e.preventDefault();
+      } else if (e.code === "ArrowDown" || e.code === "KeyS") {
+        state.input.down = true;
+        e.preventDefault();
+      } else if (e.code === "Space" && !state.running) {
+        resetGame();
+        e.preventDefault();
+      }
+    });
+
+    window.addEventListener("keyup", (e) => {
+      if (e.code === "ArrowUp" || e.code === "KeyW") {
+        state.input.up = false;
+      } else if (e.code === "ArrowDown" || e.code === "KeyS") {
+        state.input.down = false;
+      }
+    });
+
+    resetGame();
+    loop();
+  </script>
+</body>
+</html>
