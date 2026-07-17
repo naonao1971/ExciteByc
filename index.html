@@ -54,6 +54,10 @@
     .mobile-controls button:disabled {
       opacity: 0.55;
     }
+    .mobile-controls .restart {
+      border-color: #8b6c3c;
+      background: linear-gradient(180deg, #5a3f15, #2c1e08);
+    }
     .status {
       min-height: 1.4em;
       color: #b9c8ff;
@@ -66,7 +70,7 @@
     <canvas id="game" width="960" height="540" aria-label="Scramble tunnel game"></canvas>
     <div class="help">↑ / W で上昇、↓ / S で下降、Space でリスタート</div>
     <div class="mobile-controls">
-      <button id="gyroButton" type="button">iPhone の傾き操作を有効にする</button>
+      <button id="restartButton" class="restart" type="button">再スタート</button>
       <div id="gyroStatus" class="status">傾き操作は未有効です</div>
     </div>
   </div>
@@ -74,7 +78,7 @@
   <script>
     const canvas = document.getElementById("game");
     const ctx = canvas.getContext("2d");
-    const gyroButton = document.getElementById("gyroButton");
+    const restartButton = document.getElementById("restartButton");
     const gyroStatus = document.getElementById("gyroStatus");
 
     const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
@@ -177,10 +181,13 @@
     }
 
     async function enableGyro() {
+      if (state.gyro.enabled) {
+        return;
+      }
+
       state.gyro.orientationMode = getOrientationMode();
 
       if (typeof DeviceOrientationEvent === "undefined") {
-        gyroButton.disabled = true;
         updateGyroStatus("この端末では傾きセンサーが利用できません");
         return;
       }
@@ -203,8 +210,6 @@
       state.input.tilt = 0;
       state.gyro.baseAngle = state.gyro.currentAngle;
       window.addEventListener("deviceorientation", handleOrientation, true);
-      gyroButton.disabled = true;
-      gyroButton.textContent = "傾き操作は有効です";
       updateGyroStatus("端末を少し傾けて操作してください");
     }
 
@@ -396,15 +401,27 @@
       }
     });
 
-    gyroButton.addEventListener("click", () => {
-      if (!state.gyro.enabled) {
-        enableGyro();
+    restartButton.addEventListener("click", () => {
+      resetGame();
+      if (state.gyro.enabled) {
+        state.gyro.baseAngle = state.gyro.currentAngle;
+        state.input.tilt = 0;
+        updateGyroStatus("再スタートしました。傾きで操作できます");
       }
     });
 
+    const autoEnableGyro = () => {
+      if (!state.gyro.enabled && ("ontouchstart" in window || navigator.maxTouchPoints > 0)) {
+        enableGyro();
+      }
+    };
+
+    window.addEventListener("pointerdown", autoEnableGyro, { once: true, passive: true });
+    window.addEventListener("touchstart", autoEnableGyro, { once: true, passive: true });
+
     resetGame();
     if ("ontouchstart" in window || navigator.maxTouchPoints > 0) {
-      updateGyroStatus("iPhone ではボタンを押して傾き操作を有効にできます");
+      updateGyroStatus("iPhone では最初のタップで傾き操作が有効になります");
     } else {
       updateGyroStatus("傾き操作は iPhone / iPad 向けです");
     }
