@@ -58,6 +58,10 @@
       border-color: #8b6c3c;
       background: linear-gradient(180deg, #5a3f15, #2c1e08);
     }
+    .mobile-controls .start {
+      border-color: #3f8b72;
+      background: linear-gradient(180deg, #17604c, #0f362c);
+    }
     .status {
       min-height: 1.4em;
       color: #b9c8ff;
@@ -70,6 +74,7 @@
     <canvas id="game" width="960" height="540" aria-label="Scramble tunnel game"></canvas>
     <div class="help">↑ / W で上昇、↓ / S で下降、Space でリスタート</div>
     <div class="mobile-controls">
+      <button id="startButton" class="start" type="button">スタート</button>
       <button id="restartButton" class="restart" type="button">再スタート</button>
       <div id="gyroStatus" class="status">傾き操作は未有効です</div>
     </div>
@@ -78,6 +83,7 @@
   <script>
     const canvas = document.getElementById("game");
     const ctx = canvas.getContext("2d");
+    const startButton = document.getElementById("startButton");
     const restartButton = document.getElementById("restartButton");
     const gyroStatus = document.getElementById("gyroStatus");
 
@@ -152,6 +158,14 @@
       tunnel.centerVel = 0;
       tunnel.gap = 170;
       seedColumns();
+    }
+
+    function startGame() {
+      resetGame();
+      enableGyro();
+      if (!state.gyro.enabled) {
+        updateGyroStatus("開始しました。必要ならSafariの許可を確認してください");
+      }
     }
 
     function getOrientationMode() {
@@ -410,18 +424,10 @@
       }
     });
 
-    const autoEnableGyro = () => {
-      if (!state.gyro.enabled && ("ontouchstart" in window || navigator.maxTouchPoints > 0)) {
-        enableGyro();
-      }
-    };
+    startButton.addEventListener("click", startGame);
 
-    window.addEventListener("pointerdown", autoEnableGyro, { once: true, passive: true });
-    window.addEventListener("touchstart", autoEnableGyro, { once: true, passive: true });
-
-    resetGame();
     if ("ontouchstart" in window || navigator.maxTouchPoints > 0) {
-      updateGyroStatus("iPhone では最初のタップで傾き操作が有効になります");
+      updateGyroStatus("iPhone ではスタートを押すと傾き操作を許可します");
     } else {
       updateGyroStatus("傾き操作は iPhone / iPad 向けです");
     }
