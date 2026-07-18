@@ -613,40 +613,106 @@
 
     function drawHpItems() {
       for (const it of state.hpItems) {
-        // Nounsメガネ風: 丸ではなく角張ったレンズとブリッジ
-        const lensW = it.radius * 1.6;
-        const lensH = it.radius * 1.1;
-        const leftX = it.x - lensW - 3;
-        const rightX = it.x + 3;
+        const x = it.x;
         const y = it.y;
 
-        // frame shadow / glow
-        ctx.fillStyle = "rgba(30,90,60,0.06)";
-        ctx.fillRect(leftX - 3, y - lensH - 3, lensW + 6, lensH * 2 + 6);
-        ctx.fillRect(rightX - 3, y - lensH - 3, lensW + 6, lensH * 2 + 6);
+        // --- background document icon (rounded rect with folded corner) ---
+        const bgW = 56;
+        const bgH = 44;
+        const bgX = x - bgW / 2;
+        const bgY = y - bgH / 2 - 6;
+        const r = 8;
+
+        // shadow
+        ctx.fillStyle = "rgba(0,0,0,0.18)";
+        roundRect(ctx, bgX + 3, bgY + 6, bgW, bgH, r);
+        ctx.fill();
+
+        // body
+        ctx.fillStyle = "#ffffff";
+        roundRect(ctx, bgX, bgY, bgW, bgH, r);
+        ctx.fill();
+
+        // folded corner (top-right)
+        ctx.fillStyle = "rgba(240,240,240,0.98)";
+        ctx.beginPath();
+        ctx.moveTo(bgX + bgW - 12, bgY);
+        ctx.lineTo(bgX + bgW, bgY);
+        ctx.lineTo(bgX + bgW, bgY + 12);
+        ctx.closePath();
+        ctx.fill();
+
+        // inner image area (gradient) to mimic PNG preview
+        const imgPad = 8;
+        const imgX = bgX + imgPad;
+        const imgY = bgY + imgPad - 2;
+        const imgW = bgW - imgPad * 2;
+        const imgH = bgH - imgPad * 2 - 4;
+        const g = ctx.createLinearGradient(imgX, imgY, imgX, imgY + imgH);
+        g.addColorStop(0, "#accfff");
+        g.addColorStop(1, "#5aa0ff");
+        ctx.fillStyle = g;
+        roundRect(ctx, imgX, imgY, imgW, imgH, 6);
+        ctx.fill();
+
+        // subtle inner border
+        ctx.strokeStyle = "rgba(0,0,0,0.06)";
+        ctx.lineWidth = 1;
+        roundRect(ctx, bgX + 0.5, bgY + 0.5, bgW - 1, bgH - 1, r);
+        ctx.stroke();
+
+        // --- glasses in front (Nouns風) ---
+        const lensW = 14;
+        const lensH = 10;
+        const gap = 6;
+        const leftCx = x - lensW - gap / 2;
+        const rightCx = x + gap / 2;
+
+        // frame shadow
+        ctx.fillStyle = "rgba(0,0,0,0.18)";
+        roundRect(ctx, leftCx - lensW / 2 + 2, y - lensH - 2 + 3, lensW + 4, lensH * 2 + 4, 4);
+        ctx.fill();
+        roundRect(ctx, rightCx - lensW / 2 + 2, y - lensH - 2 + 3, lensW + 4, lensH * 2 + 4, 4);
+        ctx.fill();
 
         // frame body
-        ctx.fillStyle = "#0d2430"; // dark frame
-        ctx.fillRect(leftX, y - lensH, lensW, lensH * 2);
-        ctx.fillRect(rightX, y - lensH, lensW, lensH * 2);
+        ctx.fillStyle = "#0b1b22";
+        roundRect(ctx, leftCx - lensW / 2, y - lensH, lensW, lensH * 2, 4);
+        ctx.fill();
+        roundRect(ctx, rightCx - lensW / 2, y - lensH, lensW, lensH * 2, 4);
+        ctx.fill();
 
         // bridge
-        ctx.fillRect(it.x - 6, y - 4, 12, 8);
+        roundRect(ctx, leftCx + lensW / 2, y - 4, gap + 2, 8, 3);
+        ctx.fill();
 
-        // lens tint
-        ctx.fillStyle = "rgba(150,235,170,0.14)";
-        ctx.fillRect(leftX + 2, y - lensH + 2, lensW - 4, lensH * 2 - 4);
-        ctx.fillRect(rightX + 2, y - lensH + 2, lensW - 4, lensH * 2 - 4);
+        // lens tint (slightly greenish)
+        ctx.fillStyle = "rgba(170,245,200,0.14)";
+        roundRect(ctx, leftCx - lensW / 2 + 2, y - lensH + 2, lensW - 4, lensH * 2 - 4, 3);
+        ctx.fill();
+        roundRect(ctx, rightCx - lensW / 2 + 2, y - lensH + 2, lensW - 4, lensH * 2 - 4, 3);
+        ctx.fill();
 
-        // small specular highlights on lenses
-        ctx.fillStyle = "rgba(255,255,255,0.16)";
-        ctx.fillRect(leftX + 4, y - lensH + 4, 6, 4);
-        ctx.fillRect(rightX + 4, y - lensH + 4, 6, 4);
-
-        // optional tiny nose-shadow under bridge
-        ctx.fillStyle = "rgba(0,0,0,0.18)";
-        ctx.fillRect(it.x - 4, y + lensH - 2, 8, 3);
+        // specular highlight
+        ctx.fillStyle = "rgba(255,255,255,0.18)";
+        ctx.beginPath();
+        ctx.ellipse(leftCx - 2, y - 2, 4, 2.2, -0.6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(rightCx - 2, y - 2, 4, 2.2, -0.6, 0, Math.PI * 2);
+        ctx.fill();
       }
+    }
+
+    // rounded rect helper
+    function roundRect(ctx, x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
     }
 
     function updateExplosions() {
