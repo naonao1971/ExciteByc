@@ -1380,6 +1380,7 @@
       let dragging = false;
       let repeatTimeout = null;
       let repeatIntervalId = null;
+      let shortPressTimeout = null;
       let startX = 0, startY = 0, offsetX = 0, offsetY = 0;
       const wrap = document.querySelector('.wrap');
 
@@ -1389,10 +1390,10 @@
       const beginDrag = (clientX, clientY) => {
         dragging = true;
         button.classList.add('dragging');
-        button.style.position = 'absolute';
-        // raise above canvas so it doesn't get hidden on mobile
+        // use fixed positioning during drag so it stays visible above any stacking contexts
+        button.style.position = 'fixed';
         button.style.zIndex = '10000';
-        wrap.appendChild(button);
+        document.body.appendChild(button);
         offsetX = clientX - button.getBoundingClientRect().left;
         offsetY = clientY - button.getBoundingClientRect().top;
         // prevent contextmenu during drag on mobile
@@ -1428,12 +1429,19 @@
         window.addEventListener('pointerup', upHandler, { passive: false });
         window.addEventListener('touchmove', moveHandler, { passive: false });
         window.addEventListener('touchend', upHandler, { passive: false });
-        // trigger immediate single action on press
-        onShortPress();
+        // schedule short-press action with a small delay so drag can cancel it
+        shortPressTimeout = setTimeout(() => {
+          shortPressTimeout = null;
+          onShortPress();
+          button.classList.add('active');
+          setTimeout(() => button.classList.remove('active'), 120);
+        }, 60);
         // if controls are locked (game started) begin repeat fire on hold
         if (state.controlsLocked) {
           // start repeating after short delay
           repeatTimeout = setTimeout(() => {
+            // cancel the short-press since we're going into repeat
+            if (shortPressTimeout) { clearTimeout(shortPressTimeout); shortPressTimeout = null; }
             repeatIntervalId = setInterval(() => onShortPress(), 120);
             repeatTimeout = null;
           }, 300);
@@ -1448,6 +1456,7 @@
 
       const endPointer = (e) => {
         if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+        if (shortPressTimeout) { clearTimeout(shortPressTimeout); shortPressTimeout = null; }
         if (repeatTimeout) { clearTimeout(repeatTimeout); repeatTimeout = null; }
         if (repeatIntervalId) { clearInterval(repeatIntervalId); repeatIntervalId = null; }
         if (dragging) {
@@ -1459,6 +1468,16 @@
             window.removeEventListener('contextmenu', _ctxPrevent);
             _ctxPrevent = null;
           }
+          // keep final position as fixed; append back to wrap to preserve layout context
+          // convert fixed coords to wrap-relative absolute coords
+          const rect = wrap.getBoundingClientRect();
+          const brect = button.getBoundingClientRect();
+          const relX = brect.left - rect.left;
+          const relY = brect.top - rect.top;
+          button.style.position = 'absolute';
+          button.style.left = Math.max(6, Math.min(wrap.clientWidth - button.offsetWidth - 6, relX)) + 'px';
+          button.style.top = Math.max(6, Math.min(wrap.clientHeight - button.offsetHeight - 6, relY)) + 'px';
+          wrap.appendChild(button);
           // do not persist position; leave placement transient until reload
           return;
         }
