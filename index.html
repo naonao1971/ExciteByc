@@ -543,6 +543,7 @@
       updateColumns();
       updateShip();
       updateBullets();
+      updateBombs();
       updateExplosions();
       if (checkCollision()) {
         state.running = false;
@@ -631,6 +632,26 @@
       }
     }
 
+    function drawBombs() {
+      for (const b of state.bombs) {
+        // shadow
+        ctx.fillStyle = "rgba(0,0,0,0.28)";
+        ctx.beginPath();
+        ctx.ellipse(b.x + 3, b.y + 6, b.radius + 2, b.radius * 0.6, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // bomb body
+        ctx.fillStyle = "#b05b2c";
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // small fuse glow
+        ctx.fillStyle = "rgba(255,140,40,0.18)";
+        ctx.fillRect(b.x - 2, b.y - 6, 4, 6);
+      }
+    }
+
     function drawExplosions() {
       for (const p of state.explosions) {
         const alpha = Math.max(0, p.life / p.maxLife);
@@ -673,6 +694,7 @@
       drawBackground();
       drawTunnel();
       drawBullets();
+      drawBombs();
       drawExplosions();
       drawShip();
       drawHud();
