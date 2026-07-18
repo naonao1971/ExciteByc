@@ -840,12 +840,11 @@
     // return arena parameters based on stage (difficulty scales with stage)
     function getArenaParams(stage) {
       const s = Math.max(1, stage);
-      const spawnInterval = Math.max(30, 80 - (s - 1) * 6);
-      const sideSpawnChance = Math.min(0.95, 0.6 + (s - 1) * 0.05);
-      const fastProb = Math.min(0.4, 0.05 + (s - 1) * 0.03);
+      // lower interval = more frequent waves; higher sideSpawnChance = more bullets per wave
+      const spawnInterval = Math.max(25, 65 - (s - 1) * 6);
+      const sideSpawnChance = Math.min(0.98, 0.80 + (s - 1) * 0.04);
       const baseMult = 5 + (s - 1) * 0.3;
-      const fastMult = 12 + (s - 1) * 1.0;
-      return { spawnInterval, sideSpawnChance, fastProb, baseMult, fastMult };
+      return { spawnInterval, sideSpawnChance, baseMult };
     }
     function spawnArenaBullets() {
       const shipX = state.ship.x;
@@ -853,8 +852,6 @@
       const refSpeed = Math.max(1, Math.hypot(state.ship.vx, state.ship.vy));
         const params = getArenaParams(state.stage);
         const baseMult = params.baseMult;
-        const fastMult = params.fastMult;
-        const fastProb = params.fastProb;
         const sideSpawnChance = params.sideSpawnChance;
       const margin = 12;
       const positions = [
@@ -864,10 +861,8 @@
         { x: Math.random() * canvas.width, y: canvas.height + margin }
       ];
       for (const p of positions) {
-        // skip some sides occasionally to reduce overall amount
         if (Math.random() > sideSpawnChance) continue;
-        const mult = Math.random() < fastProb ? fastMult : baseMult;
-        const speed = refSpeed * mult;
+        const speed = refSpeed * baseMult;
         const dx = shipX - p.x;
         const dy = shipY - p.y;
         const len = Math.hypot(dx, dy) || 1;
@@ -1382,42 +1377,16 @@
     bindTouchControl(touchRight, "right");
     bindTouchControl(touchDown, "down");
 
-    // Fire and Bomb buttons: tap = 1 shot, hold = repeat fire
-    // touchend/mouseup are registered on window so release is always caught.
+    // Fire and Bomb buttons: tap only (no repeat)
     function makeRepeatButton(button, action) {
       if (!button) return;
-      let delayTimer = null;
-      let repeatInterval = null;
-      let pressing = false;
-
-      const stopAll = () => {
-        if (!pressing) return;
-        pressing = false;
-        if (delayTimer)     { clearTimeout(delayTimer);    delayTimer = null; }
-        if (repeatInterval) { clearInterval(repeatInterval); repeatInterval = null; }
-        button.classList.remove('active');
-      };
-
-      const startFire = (e) => {
-        e.preventDefault();
-        if (pressing) return; // guard against double-fire (touchstart + pointerdown)
-        pressing = true;
-        action();
-        button.classList.add('active');
-        delayTimer = setTimeout(() => {
-          delayTimer = null;
-          if (pressing) repeatInterval = setInterval(action, 120);
-        }, 250);
-      };
-
-      // Mobile: touchstart on button, touchend/touchcancel on window
-      button.addEventListener('touchstart', startFire, { passive: false });
-      window.addEventListener('touchend',    stopAll, { passive: true });
-      window.addEventListener('touchcancel', stopAll, { passive: true });
-
-      // Desktop: mousedown on button, mouseup on window
-      button.addEventListener('mousedown', startFire, { passive: false });
-      window.addEventListener('mouseup',   stopAll, { passive: true });
+      const press = (e) => { e.preventDefault(); action(); button.classList.add('active'); };
+      const release = () => button.classList.remove('active');
+      button.addEventListener('touchstart', press,   { passive: false });
+      button.addEventListener('touchend',   release, { passive: true });
+      button.addEventListener('touchcancel',release, { passive: true });
+      button.addEventListener('mousedown',  press,   { passive: false });
+      window.addEventListener('mouseup',    release, { passive: true });
     }
 
     makeRepeatButton(touchFire, () => fireVulcan());
