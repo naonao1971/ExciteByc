@@ -110,6 +110,9 @@
       z-index: 3;
       display: none;
       pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
     }
     .touch-fire {
       border-color: #9d6038;
@@ -160,6 +163,7 @@
     </div>
     <div id="firePad" class="fire-pad" aria-label="発射ボタン">
       <button id="touchFire" class="touch-btn touch-fire" type="button" aria-label="バルカン発射">X</button>
+      <button id="touchBomb" class="touch-btn touch-bomb" type="button" aria-label="爆弾投下">💣</button>
     </div>
   </div>
 
@@ -173,6 +177,7 @@
     const touchUp = document.getElementById("touchUp");
     const touchLeft = document.getElementById("touchLeft");
     const touchFire = document.getElementById("touchFire");
+    const touchBomb = document.getElementById("touchBomb");
     const touchRight = document.getElementById("touchRight");
     const touchDown = document.getElementById("touchDown");
 
@@ -722,6 +727,9 @@
       } else if (e.code === "KeyX") {
         fireVulcan();
         e.preventDefault();
+      } else if (e.code === "KeyZ") {
+        dropBomb();
+        e.preventDefault();
       } else if (e.code === "Space" && !state.running) {
         resetGame();
         e.preventDefault();
@@ -796,6 +804,24 @@
     touchFire.addEventListener("pointercancel", releaseFireButton, { passive: true });
     touchFire.addEventListener("touchend", releaseFireButton, { passive: true });
     touchFire.addEventListener("touchcancel", releaseFireButton, { passive: true });
+
+    if (touchBomb) {
+      touchBomb.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        dropBomb();
+        touchBomb.classList.add("active");
+      }, { passive: false });
+      touchBomb.addEventListener("touchstart", (e) => {
+        e.preventDefault();
+        dropBomb();
+        touchBomb.classList.add("active");
+      }, { passive: false });
+      const releaseBombButton = () => touchBomb.classList.remove("active");
+      touchBomb.addEventListener("pointerup", releaseBombButton, { passive: true });
+      touchBomb.addEventListener("pointercancel", releaseBombButton, { passive: true });
+      touchBomb.addEventListener("touchend", releaseBombButton, { passive: true });
+      touchBomb.addEventListener("touchcancel", releaseBombButton, { passive: true });
+    }
 
     if ("ontouchstart" in window || navigator.maxTouchPoints > 0) {
       touchPad.style.display = "grid";
