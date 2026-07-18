@@ -78,7 +78,7 @@
     }
     .touch-pad {
       position: absolute;
-      right: 14px;
+      left: 14px;
       bottom: 170px;
       z-index: 3;
       display: none;
@@ -99,16 +99,25 @@
       grid-column: 3;
       grid-row: 2;
     }
-    .touch-fire {
-      grid-column: 2;
-      grid-row: 2;
-      border-color: #9d6038;
-      background: rgba(80, 34, 14, 0.82);
-      font-size: 18px;
-    }
     .touch-down {
       grid-column: 2;
       grid-row: 3;
+    }
+    .fire-pad {
+      position: absolute;
+      right: 14px;
+      bottom: 220px;
+      z-index: 3;
+      display: none;
+      pointer-events: none;
+    }
+    .touch-fire {
+      border-color: #9d6038;
+      background: rgba(80, 34, 14, 0.82);
+      font-size: 18px;
+      width: 62px;
+      height: 62px;
+      border-radius: 16px;
     }
     .touch-btn {
       width: 56px;
@@ -146,9 +155,11 @@
     <div id="touchPad" class="touch-pad" aria-label="タッチコントローラー">
       <button id="touchUp" class="touch-btn touch-up" type="button" aria-label="上昇">▲</button>
       <button id="touchLeft" class="touch-btn touch-left" type="button" aria-label="左移動">◀</button>
-      <button id="touchFire" class="touch-btn touch-fire" type="button" aria-label="バルカン発射">X</button>
       <button id="touchRight" class="touch-btn touch-right" type="button" aria-label="右移動">▶</button>
       <button id="touchDown" class="touch-btn touch-down" type="button" aria-label="下降">▼</button>
+    </div>
+    <div id="firePad" class="fire-pad" aria-label="発射ボタン">
+      <button id="touchFire" class="touch-btn touch-fire" type="button" aria-label="バルカン発射">X</button>
     </div>
   </div>
 
@@ -158,6 +169,7 @@
     const restartButton = document.getElementById("restartButton");
     const gyroStatus = document.getElementById("gyroStatus");
     const touchPad = document.getElementById("touchPad");
+    const firePad = document.getElementById("firePad");
     const touchUp = document.getElementById("touchUp");
     const touchLeft = document.getElementById("touchLeft");
     const touchFire = document.getElementById("touchFire");
@@ -702,7 +714,8 @@
 
     if ("ontouchstart" in window || navigator.maxTouchPoints > 0) {
       touchPad.style.display = "grid";
-      updateGyroStatus("iPhone は右下コントローラーで移動、Xでバルカン発射できます");
+      firePad.style.display = "block";
+      updateGyroStatus("iPhone は左下で移動、右側Xでバルカン発射できます");
     } else {
       updateGyroStatus("PCはキーボード、スマホは右下コントローラーで移動と発射ができます");
     }
