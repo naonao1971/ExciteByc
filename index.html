@@ -99,6 +99,13 @@
       grid-column: 3;
       grid-row: 2;
     }
+    .touch-fire {
+      grid-column: 2;
+      grid-row: 2;
+      border-color: #9d6038;
+      background: rgba(80, 34, 14, 0.82);
+      font-size: 18px;
+    }
     .touch-down {
       grid-column: 2;
       grid-row: 3;
@@ -131,7 +138,7 @@
 <body>
   <div class="wrap">
     <canvas id="game" width="960" height="540" aria-label="Scramble tunnel game"></canvas>
-    <div class="help">↑↓←→ / WASD で移動、Space でリスタート</div>
+    <div class="help">↑↓←→ / WASD で移動、X でバルカン、Space でリスタート</div>
     <div class="mobile-controls">
       <button id="restartButton" class="restart" type="button">再スタート</button>
       <div id="gyroStatus" class="status">傾き操作は未有効です</div>
@@ -139,6 +146,7 @@
     <div id="touchPad" class="touch-pad" aria-label="タッチコントローラー">
       <button id="touchUp" class="touch-btn touch-up" type="button" aria-label="上昇">▲</button>
       <button id="touchLeft" class="touch-btn touch-left" type="button" aria-label="左移動">◀</button>
+      <button id="touchFire" class="touch-btn touch-fire" type="button" aria-label="バルカン発射">X</button>
       <button id="touchRight" class="touch-btn touch-right" type="button" aria-label="右移動">▶</button>
       <button id="touchDown" class="touch-btn touch-down" type="button" aria-label="下降">▼</button>
     </div>
@@ -152,6 +160,7 @@
     const touchPad = document.getElementById("touchPad");
     const touchUp = document.getElementById("touchUp");
     const touchLeft = document.getElementById("touchLeft");
+    const touchFire = document.getElementById("touchFire");
     const touchRight = document.getElementById("touchRight");
     const touchDown = document.getElementById("touchDown");
 
@@ -167,6 +176,7 @@
       score: 0,
       speed: 2.6,
       maxSpeed: 6.2,
+      bullets: [],
       columns: [],
       stars: [],
       frame: 0,
@@ -222,6 +232,7 @@
       state.ship.y = canvas.height / 2;
       state.ship.vx = 0;
       state.ship.vy = 0;
+      state.bullets.length = 0;
 
       tunnel.center = canvas.height / 2;
       tunnel.centerVel = 0;
@@ -236,6 +247,19 @@
 
     function updateGyroStatus(message) {
       gyroStatus.textContent = message;
+    }
+
+    function fireVulcan() {
+      if (!state.running) return;
+      const shipSpeed = Math.max(1, Math.hypot(state.ship.vx, state.ship.vy));
+      const bulletSpeed = shipSpeed * 10;
+      state.bullets.push({
+        x: state.ship.x + state.ship.radius + 6,
+        y: state.ship.y,
+        vx: bulletSpeed,
+        vy: state.ship.vy * 0.12,
+        radius: 3
+      });
     }
 
     function updateTunnel() {
@@ -296,6 +320,16 @@
       }
     }
 
+    function updateBullets() {
+      for (const b of state.bullets) {
+        b.x += b.vx;
+        b.y += b.vy;
+      }
+      state.bullets = state.bullets.filter(
+        (b) => b.x < canvas.width + 40 && b.y > -20 && b.y < canvas.height + 20
+      );
+    }
+
     function update() {
       if (!state.running) return;
       state.frame++;
@@ -303,6 +337,7 @@
       updateStars();
       updateColumns();
       updateShip();
+      updateBullets();
       if (checkCollision()) {
         state.running = false;
       } else {
@@ -369,6 +404,18 @@
       ctx.restore();
     }
 
+    function drawBullets() {
+      for (const b of state.bullets) {
+        ctx.fillStyle = "#ffcf70";
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = "rgba(255, 180, 80, 0.45)";
+        ctx.fillRect(b.x - 12, b.y - 1, 10, 2);
+      }
+    }
+
     function drawHud() {
       ctx.fillStyle = "#dbe6ff";
       ctx.font = "20px ui-monospace, SFMono-Regular, Menlo, monospace";
@@ -391,6 +438,7 @@
     function render() {
       drawBackground();
       drawTunnel();
+      drawBullets();
       drawShip();
       drawHud();
     }
@@ -413,6 +461,9 @@
         e.preventDefault();
       } else if (e.code === "ArrowRight" || e.code === "KeyD") {
         state.input.right = true;
+        e.preventDefault();
+      } else if (e.code === "KeyX") {
+        fireVulcan();
         e.preventDefault();
       } else if (e.code === "Space" && !state.running) {
         resetGame();
@@ -468,11 +519,26 @@
     bindTouchControl(touchRight, "right");
     bindTouchControl(touchDown, "down");
 
+    touchFire.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      fireVulcan();
+      touchFire.classList.add("active");
+    }, { passive: false });
+
+    const releaseFireButton = () => {
+      touchFire.classList.remove("active");
+    };
+
+    touchFire.addEventListener("pointerup", releaseFireButton, { passive: true });
+    touchFire.addEventListener("pointercancel", releaseFireButton, { passive: true });
+    touchFire.addEventListener("touchend", releaseFireButton, { passive: true });
+    touchFire.addEventListener("touchcancel", releaseFireButton, { passive: true });
+
     if ("ontouchstart" in window || navigator.maxTouchPoints > 0) {
       touchPad.style.display = "grid";
-      updateGyroStatus("iPhone は右下コントローラーで上下左右に操作できます");
+      updateGyroStatus("iPhone は右下コントローラーで移動、Xでバルカン発射できます");
     } else {
-      updateGyroStatus("PCはキーボード、スマホは右下コントローラーで上下左右に操作できます");
+      updateGyroStatus("PCはキーボード、スマホは右下コントローラーで移動と発射ができます");
     }
     loop();
   </script>
