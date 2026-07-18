@@ -1383,34 +1383,41 @@
     bindTouchControl(touchDown, "down");
 
     // Fire and Bomb buttons: tap = 1 shot, hold = repeat fire
-    // Uses Pointer Events only to avoid double-fire from touchstart+pointerdown on mobile.
+    // touchend/mouseup are registered on window so release is always caught.
     function makeRepeatButton(button, action) {
       if (!button) return;
       let delayTimer = null;
       let repeatInterval = null;
-      const REPEAT_DELAY = 250;  // ms before repeat starts
-      const REPEAT_RATE  = 120;  // ms between repeats
+      let pressing = false;
 
       const stopAll = () => {
-        if (delayTimer)    { clearTimeout(delayTimer);   delayTimer = null; }
-        if (repeatInterval){ clearInterval(repeatInterval); repeatInterval = null; }
+        if (!pressing) return;
+        pressing = false;
+        if (delayTimer)     { clearTimeout(delayTimer);    delayTimer = null; }
+        if (repeatInterval) { clearInterval(repeatInterval); repeatInterval = null; }
         button.classList.remove('active');
       };
 
-      button.addEventListener('pointerdown', (e) => {
+      const startFire = (e) => {
         e.preventDefault();
-        stopAll(); // guard against double-fire
-        button.setPointerCapture(e.pointerId); // ensure pointerup fires even if finger slides off
+        if (pressing) return; // guard against double-fire (touchstart + pointerdown)
+        pressing = true;
         action();
         button.classList.add('active');
         delayTimer = setTimeout(() => {
           delayTimer = null;
-          repeatInterval = setInterval(action, REPEAT_RATE);
-        }, REPEAT_DELAY);
-      }, { passive: false });
+          if (pressing) repeatInterval = setInterval(action, 120);
+        }, 250);
+      };
 
-      button.addEventListener('pointerup',     stopAll, { passive: true });
-      button.addEventListener('pointercancel', stopAll, { passive: true });
+      // Mobile: touchstart on button, touchend/touchcancel on window
+      button.addEventListener('touchstart', startFire, { passive: false });
+      window.addEventListener('touchend',    stopAll, { passive: true });
+      window.addEventListener('touchcancel', stopAll, { passive: true });
+
+      // Desktop: mousedown on button, mouseup on window
+      button.addEventListener('mousedown', startFire, { passive: false });
+      window.addEventListener('mouseup',   stopAll, { passive: true });
     }
 
     makeRepeatButton(touchFire, () => fireVulcan());
