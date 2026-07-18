@@ -311,14 +311,15 @@
       if (!col) return;
 
       const width = 14 + Math.random() * 14;
-      const protrusion = 14 + Math.random() * 20;
+      const maxProtrusion = Math.max(12, Math.min(28, (col.bottom - col.top) * 0.42));
+      const protrusion = 12 + Math.random() * (maxProtrusion - 12);
       const side = Math.random() < 0.5 ? "top" : "bottom";
       const color = baseColors[(Math.random() * baseColors.length) | 0];
 
       if (side === "top") {
-        state.bases.push({ x, y: col.top - protrusion, w: width, h: protrusion, side, color });
+        state.bases.push({ x, y: col.top, w: width, h: protrusion, side, color });
       } else {
-        state.bases.push({ x, y: col.bottom, w: width, h: protrusion, side, color });
+        state.bases.push({ x, y: col.bottom - protrusion, w: width, h: protrusion, side, color });
       }
     }
 
