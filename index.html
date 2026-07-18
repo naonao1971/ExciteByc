@@ -219,6 +219,7 @@
         hp: 100,
         contactFrames: 0
       },
+      hpItems: [],
       input: { up: false, down: false, left: false, right: false },
       effects: {
         slowTimer: 0,
@@ -550,6 +551,90 @@
       state.bombs = state.bombs.filter((b) => b.x > -60 && b.x < canvas.width + 60 && b.y < canvas.height + 200);
     }
 
+    // --- HP 回復アイテム (ゆらゆら浮遊) ---
+    function spawnHpItem() {
+      const x = canvas.width + 24;
+      // spawn within tunnel gap area near center of current column at right edge
+      const col = state.columns[Math.max(0, canvas.width - 2)];
+      let baseY = canvas.height / 2;
+      if (col) {
+        // choose a y between column.top + 16 and column.bottom - 16
+        baseY = Math.max(col.top + 16, Math.min(col.bottom - 16, col.top + Math.random() * (col.bottom - col.top - 32)));
+      } else {
+        baseY = 40 + Math.random() * (canvas.height - 80);
+      }
+      const phase = Math.random() * Math.PI * 2;
+      const item = {
+        x,
+        baseY,
+        radius: 10,
+        vx: 0.6 + Math.random() * 0.8,
+        phase,
+        bobAmp: 6 + Math.random() * 6
+      };
+      state.hpItems.push(item);
+    }
+
+    function updateHpItems() {
+      // occasional spawn (不定期)
+      const HP_SPAWN_CHANCE = 0.0032; // roughly every few seconds on average
+      if (Math.random() < HP_SPAWN_CHANCE) spawnHpItem();
+
+      const collected = new Set();
+      for (let i = 0; i < state.hpItems.length; i++) {
+        const it = state.hpItems[i];
+        it.x -= state.scrollSpeed * 0.9 + it.vx;
+        // bobbing using global frame so movement is smooth
+        it.y = it.baseY + Math.sin(state.frame * 0.06 + it.phase) * it.bobAmp;
+
+        // collision with ship
+        const dx = it.x - state.ship.x;
+        const dy = it.y - state.ship.y;
+        const dist2 = dx * dx + dy * dy;
+        const r = it.radius + state.ship.radius;
+        if (dist2 <= r * r) {
+          collected.add(i);
+          // heal
+          state.ship.hp = Math.min(100, (state.ship.hp || 0) + 10);
+          state.bonusText = "HP +10";
+          state.bonusTimer = 90;
+          // small visual feedback
+          createExplosion(it.x, it.y, "blue");
+        }
+      }
+
+      if (collected.size > 0) {
+        state.hpItems = state.hpItems.filter((_, idx) => !collected.has(idx));
+      }
+
+      // remove offscreen
+      state.hpItems = state.hpItems.filter((it) => it.x > -40 && it.y > -40 && it.y < canvas.height + 40);
+    }
+
+    function drawHpItems() {
+      for (const it of state.hpItems) {
+        // soft green glow circle
+        const grd = ctx.createRadialGradient(it.x, it.y, 1, it.x, it.y, it.radius * 1.8);
+        grd.addColorStop(0, "rgba(180,255,200,0.95)");
+        grd.addColorStop(0.6, "rgba(120,220,160,0.85)");
+        grd.addColorStop(1, "rgba(40,120,80,0.08)");
+        ctx.fillStyle = grd;
+        ctx.beginPath();
+        ctx.arc(it.x, it.y, it.radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // small white plus sign
+        ctx.strokeStyle = "rgba(255,255,255,0.95)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(it.x - 4, it.y);
+        ctx.lineTo(it.x + 4, it.y);
+        ctx.moveTo(it.x, it.y - 4);
+        ctx.lineTo(it.x, it.y + 4);
+        ctx.stroke();
+      }
+    }
+
     function updateExplosions() {
       for (const p of state.explosions) {
         p.x += p.vx;
@@ -575,6 +660,7 @@
       updateBullets();
       updateBombs();
       updateExplosions();
+      updateHpItems();
       // collision handling: count contact duration and apply 5 HP every 0.1s
       const penetration = getCollisionPenetration();
       // assume ~60fps; 0.1s -> ~6 frames (round to nearest)
@@ -758,6 +844,7 @@
     function render() {
       drawBackground();
       drawTunnel();
+      drawHpItems();
       drawBullets();
       drawBombs();
       drawExplosions();
