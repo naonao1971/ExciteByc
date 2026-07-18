@@ -189,6 +189,7 @@
       speed: 2.6,
       maxSpeed: 6.2,
       bullets: [],
+      bombs: [],
       bases: [],
       explosions: [],
       scrollSpeed: 2.6,
@@ -262,6 +263,7 @@
       state.ship.vx = 0;
       state.ship.vy = 0;
       state.bullets.length = 0;
+      state.bombs.length = 0;
       state.bases.length = 0;
       state.explosions.length = 0;
       state.bonusText = "";
@@ -461,6 +463,61 @@
       state.bullets = state.bullets.filter(
         (b) => b.x < canvas.width + 40 && b.y > -20 && b.y < canvas.height + 20
       );
+    }
+
+    function dropBomb() {
+      if (!state.running) return;
+      const initialVx = state.ship.vx * 0.6 + 1.2;
+      state.bombs.push({
+        x: state.ship.x - 6,
+        y: state.ship.y + 6,
+        vx: initialVx,
+        vy: 0,
+        radius: 6
+      });
+    }
+
+    function updateBombs() {
+      const gravity = 0.42;
+      const toRemove = new Set();
+      for (let i = 0; i < state.bombs.length; i++) {
+        const b = state.bombs[i];
+        b.vy += gravity;
+        b.x += b.vx;
+        b.y += b.vy;
+
+        // hit base?
+        for (let j = 0; j < state.bases.length; j++) {
+          const base = state.bases[j];
+          if (circleRectHit(b.x, b.y, b.radius, base.x, base.y, base.w, base.h)) {
+            // explode and apply bonuses to affected bases within blast radius
+            const blastR = 36;
+            createExplosion(b.x, b.y, base.color);
+            const removed = [];
+            for (let k = 0; k < state.bases.length; k++) {
+              const bb = state.bases[k];
+              if (circleRectHit(b.x, b.y, blastR, bb.x, bb.y, bb.w, bb.h)) {
+                grantBaseBonus(bb.color);
+                removed.push(k);
+              }
+            }
+            state.bases = state.bases.filter((_, idx) => !removed.includes(idx));
+            toRemove.add(i);
+            break;
+          }
+        }
+
+        // hit floor or ceiling
+        if (b.y > canvas.height - 4 || b.y < 4) {
+          createExplosion(b.x, Math.max(4, Math.min(canvas.height - 4, b.y)), "red");
+          toRemove.add(i);
+        }
+      }
+      if (toRemove.size > 0) {
+        state.bombs = state.bombs.filter((_, idx) => !toRemove.has(idx));
+      }
+
+      state.bombs = state.bombs.filter((b) => b.x > -60 && b.x < canvas.width + 60 && b.y < canvas.height + 200);
     }
 
     function updateExplosions() {
