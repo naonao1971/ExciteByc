@@ -1382,41 +1382,36 @@
     bindTouchControl(touchRight, "right");
     bindTouchControl(touchDown, "down");
 
-    // Fire and Bomb buttons: simple short-press handlers (no drag, no repeat)
-    if (touchFire) {
-      touchFire.addEventListener('pointerdown', (e) => {
+    // Fire and Bomb buttons: tap = 1 shot, hold = repeat fire
+    function makeRepeatButton(button, action) {
+      if (!button) return;
+      let repeatTimer = null;
+      const REPEAT_DELAY = 250;  // ms before repeat starts
+      const REPEAT_RATE  = 120;  // ms between repeats
+
+      const press = (e) => {
         e.preventDefault();
-        fireVulcan();
-        touchFire.classList.add('active');
-      }, { passive: false });
-      touchFire.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        fireVulcan();
-        touchFire.classList.add('active');
-      }, { passive: false });
-      const releaseFireButton = () => touchFire.classList.remove('active');
-      touchFire.addEventListener('pointerup', releaseFireButton, { passive: true });
-      touchFire.addEventListener('pointercancel', releaseFireButton, { passive: true });
-      touchFire.addEventListener('touchend', releaseFireButton, { passive: true });
-      touchFire.addEventListener('touchcancel', releaseFireButton, { passive: true });
+        action();
+        button.classList.add('active');
+        repeatTimer = setTimeout(() => {
+          repeatTimer = setInterval(action, REPEAT_RATE);
+        }, REPEAT_DELAY);
+      };
+      const release = () => {
+        if (repeatTimer) { clearTimeout(repeatTimer); clearInterval(repeatTimer); repeatTimer = null; }
+        button.classList.remove('active');
+      };
+
+      button.addEventListener('pointerdown', press, { passive: false });
+      button.addEventListener('touchstart', press, { passive: false });
+      button.addEventListener('pointerup',     release, { passive: true });
+      button.addEventListener('pointercancel', release, { passive: true });
+      button.addEventListener('touchend',      release, { passive: true });
+      button.addEventListener('touchcancel',   release, { passive: true });
     }
-    if (touchBomb) {
-      touchBomb.addEventListener('pointerdown', (e) => {
-        e.preventDefault();
-        dropBomb();
-        touchBomb.classList.add('active');
-      }, { passive: false });
-      touchBomb.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        dropBomb();
-        touchBomb.classList.add('active');
-      }, { passive: false });
-      const releaseBombButton = () => touchBomb.classList.remove('active');
-      touchBomb.addEventListener('pointerup', releaseBombButton, { passive: true });
-      touchBomb.addEventListener('pointercancel', releaseBombButton, { passive: true });
-      touchBomb.addEventListener('touchend', releaseBombButton, { passive: true });
-      touchBomb.addEventListener('touchcancel', releaseBombButton, { passive: true });
-    }
+
+    makeRepeatButton(touchFire, () => fireVulcan());
+    makeRepeatButton(touchBomb, () => dropBomb());
 
     if ("ontouchstart" in window || navigator.maxTouchPoints > 0) {
       touchPad.style.display = "grid";
