@@ -78,7 +78,7 @@
     }
     .touch-pad {
       position: absolute;
-      left: 34px;
+      right: 96px;
       bottom: 96px;
       z-index: 3;
       display: none;
@@ -105,8 +105,8 @@
     }
     .fire-pad {
       position: absolute;
-      right: 14px;
-      bottom: 220px;
+      right: 20px;
+      bottom: 136px;
       z-index: 3;
       display: none;
       pointer-events: none;
@@ -703,6 +703,12 @@
       touchFire.classList.add("active");
     }, { passive: false });
 
+    touchFire.addEventListener("touchstart", (e) => {
+      e.preventDefault();
+      fireVulcan();
+      touchFire.classList.add("active");
+    }, { passive: false });
+
     const releaseFireButton = () => {
       touchFire.classList.remove("active");
     };
@@ -715,7 +721,7 @@
     if ("ontouchstart" in window || navigator.maxTouchPoints > 0) {
       touchPad.style.display = "grid";
       firePad.style.display = "block";
-      updateGyroStatus("iPhone は左下で移動、右側Xでバルカン発射できます");
+      updateGyroStatus("iPhone は右下の十字キーで移動、右のXでバルカン発射できます");
     } else {
       updateGyroStatus("PCはキーボード、スマホは右下コントローラーで移動と発射ができます");
     }
