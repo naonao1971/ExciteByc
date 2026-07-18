@@ -216,7 +216,8 @@
         vx: 0,
         vy: 0,
         radius: 11,
-        hp: 100
+        hp: 100,
+        contactFrames: 0
       },
       input: { up: false, down: false, left: false, right: false },
       effects: {
@@ -284,6 +285,7 @@
       state.effects.slowTimer = 0;
       state.effects.wideTimer = 0;
       state.ship.hp = 100;
+      state.ship.contactFrames = 0;
 
       tunnel.center = canvas.height / 2;
       tunnel.centerVel = 0;
@@ -573,19 +575,23 @@
       updateBullets();
       updateBombs();
       updateExplosions();
-      // collision handling now reduces HP based on penetration and impact speed
+      // collision handling: count contact duration and apply 5 HP every 0.1s
       const penetration = getCollisionPenetration();
+      // assume ~60fps; 0.1s -> ~6 frames (round to nearest)
+      const CONTACT_FRAMES_THRESHOLD = Math.max(1, Math.round(0.1 * 60));
       if (penetration > 0) {
-        const speed = Math.hypot(state.ship.vx, state.ship.vy);
-        // damage scales with penetration and some with speed
-        const damage = Math.ceil(penetration * 1.6 + speed * 2);
-        state.ship.hp = Math.max(0, state.ship.hp - damage);
-        // when HP depleted, explode and stop the game
-        if (state.ship.hp <= 0) {
-          createExplosion(state.ship.x, state.ship.y, "red");
-          state.running = false;
+        state.ship.contactFrames++;
+        if (state.ship.contactFrames >= CONTACT_FRAMES_THRESHOLD) {
+          state.ship.contactFrames = 0;
+          state.ship.hp = Math.max(0, state.ship.hp - 5);
+          if (state.ship.hp <= 0) {
+            createExplosion(state.ship.x, state.ship.y, "red");
+            state.running = false;
+          }
         }
       } else {
+        // reset contact counter and award score when not touching
+        state.ship.contactFrames = 0;
         state.score += 1;
       }
     }
