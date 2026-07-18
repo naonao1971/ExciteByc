@@ -567,7 +567,7 @@
       const item = {
         x,
         baseY,
-        radius: 10,
+        radius: 12,
         vx: 0.6 + Math.random() * 0.8,
         phase,
         bobAmp: 6 + Math.random() * 6
@@ -577,7 +577,7 @@
 
     function updateHpItems() {
       // occasional spawn (不定期)
-      const HP_SPAWN_CHANCE = 0.0032; // roughly every few seconds on average
+      const HP_SPAWN_CHANCE = 0.00064; // reduced to ~1/5 the previous rate
       if (Math.random() < HP_SPAWN_CHANCE) spawnHpItem();
 
       const collected = new Set();
@@ -613,25 +613,39 @@
 
     function drawHpItems() {
       for (const it of state.hpItems) {
-        // soft green glow circle
-        const grd = ctx.createRadialGradient(it.x, it.y, 1, it.x, it.y, it.radius * 1.8);
-        grd.addColorStop(0, "rgba(180,255,200,0.95)");
-        grd.addColorStop(0.6, "rgba(120,220,160,0.85)");
-        grd.addColorStop(1, "rgba(40,120,80,0.08)");
-        ctx.fillStyle = grd;
-        ctx.beginPath();
-        ctx.arc(it.x, it.y, it.radius, 0, Math.PI * 2);
-        ctx.fill();
+        // Nounsメガネ風: 丸ではなく角張ったレンズとブリッジ
+        const lensW = it.radius * 1.6;
+        const lensH = it.radius * 1.1;
+        const leftX = it.x - lensW - 3;
+        const rightX = it.x + 3;
+        const y = it.y;
 
-        // small white plus sign
-        ctx.strokeStyle = "rgba(255,255,255,0.95)";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(it.x - 4, it.y);
-        ctx.lineTo(it.x + 4, it.y);
-        ctx.moveTo(it.x, it.y - 4);
-        ctx.lineTo(it.x, it.y + 4);
-        ctx.stroke();
+        // frame shadow / glow
+        ctx.fillStyle = "rgba(30,90,60,0.06)";
+        ctx.fillRect(leftX - 3, y - lensH - 3, lensW + 6, lensH * 2 + 6);
+        ctx.fillRect(rightX - 3, y - lensH - 3, lensW + 6, lensH * 2 + 6);
+
+        // frame body
+        ctx.fillStyle = "#0d2430"; // dark frame
+        ctx.fillRect(leftX, y - lensH, lensW, lensH * 2);
+        ctx.fillRect(rightX, y - lensH, lensW, lensH * 2);
+
+        // bridge
+        ctx.fillRect(it.x - 6, y - 4, 12, 8);
+
+        // lens tint
+        ctx.fillStyle = "rgba(150,235,170,0.14)";
+        ctx.fillRect(leftX + 2, y - lensH + 2, lensW - 4, lensH * 2 - 4);
+        ctx.fillRect(rightX + 2, y - lensH + 2, lensW - 4, lensH * 2 - 4);
+
+        // small specular highlights on lenses
+        ctx.fillStyle = "rgba(255,255,255,0.16)";
+        ctx.fillRect(leftX + 4, y - lensH + 4, 6, 4);
+        ctx.fillRect(rightX + 4, y - lensH + 4, 6, 4);
+
+        // optional tiny nose-shadow under bridge
+        ctx.fillStyle = "rgba(0,0,0,0.18)";
+        ctx.fillRect(it.x - 4, y + lensH - 2, 8, 3);
       }
     }
 
