@@ -76,6 +76,39 @@
       color: #b9c8ff;
       font-size: 13px;
     }
+    .touch-pad {
+      position: absolute;
+      right: 14px;
+      bottom: 18px;
+      z-index: 3;
+      display: none;
+      flex-direction: column;
+      gap: 10px;
+      pointer-events: none;
+    }
+    .touch-btn {
+      width: 68px;
+      height: 68px;
+      border-radius: 18px;
+      border: 1px solid #3f558e;
+      background: rgba(16, 28, 56, 0.72);
+      color: #f2f6ff;
+      font-size: 28px;
+      font-weight: 800;
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      pointer-events: auto;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .touch-btn:active,
+    .touch-btn.active {
+      background: rgba(71, 118, 224, 0.86);
+      border-color: #7db0ff;
+      transform: translateY(1px);
+    }
   </style>
 </head>
 <body>
@@ -86,6 +119,10 @@
       <button id="restartButton" class="restart" type="button">再スタート</button>
       <div id="gyroStatus" class="status">傾き操作は未有効です</div>
     </div>
+    <div id="touchPad" class="touch-pad" aria-label="タッチコントローラー">
+      <button id="touchUp" class="touch-btn" type="button" aria-label="上昇">▲</button>
+      <button id="touchDown" class="touch-btn" type="button" aria-label="下降">▼</button>
+    </div>
   </div>
 
   <script>
@@ -93,6 +130,9 @@
     const ctx = canvas.getContext("2d");
     const restartButton = document.getElementById("restartButton");
     const gyroStatus = document.getElementById("gyroStatus");
+    const touchPad = document.getElementById("touchPad");
+    const touchUp = document.getElementById("touchUp");
+    const touchDown = document.getElementById("touchDown");
 
     const startButton = document.createElement("button");
     startButton.id = "startButton";
@@ -100,8 +140,6 @@
     startButton.className = "start hud-start";
     startButton.textContent = "スタート";
     document.querySelector(".wrap").appendChild(startButton);
-
-    const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
     const state = {
       running: true,
@@ -117,14 +155,7 @@
         vy: 0,
         radius: 11
       },
-      input: { up: false, down: false, tilt: 0 },
-      gyro: {
-        enabled: false,
-        permission: "idle",
-        baseAngle: 0,
-        currentAngle: 0,
-        orientationMode: "portrait"
-      }
+      input: { up: false, down: false }
     };
 
     const tunnel = {
@@ -176,69 +207,11 @@
 
     function startGame() {
       resetGame();
-      enableGyro();
-      if (!state.gyro.enabled) {
-        updateGyroStatus("開始しました。必要ならSafariの許可を確認してください");
-      }
-    }
-
-    function getOrientationMode() {
-      return Math.abs(window.orientation || 0) === 90 ? "landscape" : "portrait";
+      updateGyroStatus("開始しました。右下コントローラーで操作できます");
     }
 
     function updateGyroStatus(message) {
       gyroStatus.textContent = message;
-    }
-
-    function getTiltAngle(event) {
-      const mode = state.gyro.orientationMode;
-      const raw = mode === "landscape" ? event.gamma : event.beta;
-      if (typeof raw !== "number") return null;
-      return raw;
-    }
-
-    function handleOrientation(event) {
-      const rawAngle = getTiltAngle(event);
-      if (rawAngle === null) return;
-      state.gyro.currentAngle = rawAngle;
-      const offset = state.gyro.baseAngle - rawAngle;
-      state.input.tilt = clamp(offset / 25, -1, 1);
-      if (Math.abs(state.input.tilt) < 0.08) {
-        state.input.tilt = 0;
-      }
-    }
-
-    async function enableGyro() {
-      if (state.gyro.enabled) {
-        return;
-      }
-
-      state.gyro.orientationMode = getOrientationMode();
-
-      if (typeof DeviceOrientationEvent === "undefined") {
-        updateGyroStatus("この端末では傾きセンサーが利用できません");
-        return;
-      }
-
-      let granted = true;
-      if (typeof DeviceOrientationEvent.requestPermission === "function") {
-        state.gyro.permission = "requesting";
-        updateGyroStatus("許可を待っています…");
-        granted = await DeviceOrientationEvent.requestPermission().then((result) => result === "granted").catch(() => false);
-      }
-
-      if (!granted) {
-        state.gyro.permission = "denied";
-        updateGyroStatus("傾き操作が許可されませんでした");
-        return;
-      }
-
-      state.gyro.enabled = true;
-      state.gyro.permission = "granted";
-      state.input.tilt = 0;
-      state.gyro.baseAngle = state.gyro.currentAngle;
-      window.addEventListener("deviceorientation", handleOrientation, true);
-      updateGyroStatus("端末を少し傾けて操作してください");
     }
 
     function updateTunnel() {
@@ -268,7 +241,6 @@
       const drag = 0.985;
       if (state.input.up) state.ship.vy -= thrust;
       if (state.input.down) state.ship.vy += thrust;
-      if (state.input.tilt !== 0) state.ship.vy += state.input.tilt * thrust * 0.8;
       state.ship.vy *= drag;
       state.ship.y += state.ship.vy;
       state.ship.y = Math.max(0, Math.min(canvas.height, state.ship.y));
@@ -420,30 +392,45 @@
       }
     });
 
-    window.addEventListener("orientationchange", () => {
-      state.gyro.orientationMode = getOrientationMode();
-      if (state.gyro.enabled) {
-        state.gyro.baseAngle = state.gyro.currentAngle;
-        state.input.tilt = 0;
-        updateGyroStatus("向きを変えたので基準を再調整しました");
-      }
-    });
-
     restartButton.addEventListener("click", () => {
       resetGame();
-      if (state.gyro.enabled) {
-        state.gyro.baseAngle = state.gyro.currentAngle;
-        state.input.tilt = 0;
-        updateGyroStatus("再スタートしました。傾きで操作できます");
-      }
+      updateGyroStatus("再スタートしました。右下コントローラーで操作できます");
     });
 
     startButton.addEventListener("click", startGame);
 
+    function setTouchControl(button, actionKey, enabled) {
+      state.input[actionKey] = enabled;
+      button.classList.toggle("active", enabled);
+    }
+
+    function bindTouchControl(button, actionKey) {
+      const start = (e) => {
+        e.preventDefault();
+        setTouchControl(button, actionKey, true);
+      };
+      const end = (e) => {
+        e.preventDefault();
+        setTouchControl(button, actionKey, false);
+      };
+
+      button.addEventListener("pointerdown", start, { passive: false });
+      button.addEventListener("pointerup", end, { passive: false });
+      button.addEventListener("pointerleave", end, { passive: false });
+      button.addEventListener("pointercancel", end, { passive: false });
+      button.addEventListener("touchstart", start, { passive: false });
+      button.addEventListener("touchend", end, { passive: false });
+      button.addEventListener("touchcancel", end, { passive: false });
+    }
+
+    bindTouchControl(touchUp, "up");
+    bindTouchControl(touchDown, "down");
+
     if ("ontouchstart" in window || navigator.maxTouchPoints > 0) {
-      updateGyroStatus("iPhone ではスタートを押すと傾き操作を許可します");
+      touchPad.style.display = "flex";
+      updateGyroStatus("iPhone は右下コントローラーで操作できます");
     } else {
-      updateGyroStatus("傾き操作は iPhone / iPad 向けです");
+      updateGyroStatus("PCはキーボード、スマホは右下コントローラーで操作できます");
     }
     loop();
   </script>
