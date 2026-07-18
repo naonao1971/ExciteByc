@@ -1375,17 +1375,7 @@
       let startX = 0, startY = 0, offsetX = 0, offsetY = 0;
       const wrap = document.querySelector('.wrap');
 
-      // restore saved position
-      try {
-        const saved = localStorage.getItem('btnpos-' + button.id);
-        if (saved) {
-          const p = JSON.parse(saved);
-          button.style.position = 'absolute';
-          button.style.left = p.x + 'px';
-          button.style.top = p.y + 'px';
-          wrap.appendChild(button);
-        }
-      } catch (e) {}
+      // positions are not persisted across reloads; buttons return to initial layout on refresh
 
       const beginDrag = (clientX, clientY) => {
         dragging = true;
@@ -1435,9 +1425,7 @@
         if (dragging) {
           dragging = false;
           button.classList.remove('dragging');
-          try {
-            localStorage.setItem('btnpos-' + button.id, JSON.stringify({ x: parseInt(button.style.left||0,10), y: parseInt(button.style.top||0,10) }));
-          } catch (err) {}
+          // do not persist position; leave placement transient until reload
           return;
         }
         // short press -> trigger action
