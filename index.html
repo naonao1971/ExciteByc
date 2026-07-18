@@ -82,9 +82,26 @@
       bottom: 170px;
       z-index: 3;
       display: none;
-      flex-direction: column;
+      grid-template-columns: repeat(3, 56px);
+      grid-template-rows: repeat(3, 56px);
       gap: 8px;
       pointer-events: none;
+    }
+    .touch-up {
+      grid-column: 2;
+      grid-row: 1;
+    }
+    .touch-left {
+      grid-column: 1;
+      grid-row: 2;
+    }
+    .touch-right {
+      grid-column: 3;
+      grid-row: 2;
+    }
+    .touch-down {
+      grid-column: 2;
+      grid-row: 3;
     }
     .touch-btn {
       width: 56px;
@@ -114,14 +131,16 @@
 <body>
   <div class="wrap">
     <canvas id="game" width="960" height="540" aria-label="Scramble tunnel game"></canvas>
-    <div class="help">↑ / W で上昇、↓ / S で下降、Space でリスタート</div>
+    <div class="help">↑↓←→ / WASD で移動、Space でリスタート</div>
     <div class="mobile-controls">
       <button id="restartButton" class="restart" type="button">再スタート</button>
       <div id="gyroStatus" class="status">傾き操作は未有効です</div>
     </div>
     <div id="touchPad" class="touch-pad" aria-label="タッチコントローラー">
-      <button id="touchUp" class="touch-btn" type="button" aria-label="上昇">▲</button>
-      <button id="touchDown" class="touch-btn" type="button" aria-label="下降">▼</button>
+      <button id="touchUp" class="touch-btn touch-up" type="button" aria-label="上昇">▲</button>
+      <button id="touchLeft" class="touch-btn touch-left" type="button" aria-label="左移動">◀</button>
+      <button id="touchRight" class="touch-btn touch-right" type="button" aria-label="右移動">▶</button>
+      <button id="touchDown" class="touch-btn touch-down" type="button" aria-label="下降">▼</button>
     </div>
   </div>
 
@@ -132,6 +151,8 @@
     const gyroStatus = document.getElementById("gyroStatus");
     const touchPad = document.getElementById("touchPad");
     const touchUp = document.getElementById("touchUp");
+    const touchLeft = document.getElementById("touchLeft");
+    const touchRight = document.getElementById("touchRight");
     const touchDown = document.getElementById("touchDown");
 
     const startButton = document.createElement("button");
@@ -152,10 +173,11 @@
       ship: {
         x: 130,
         y: canvas.height / 2,
+        vx: 0,
         vy: 0,
         radius: 11
       },
-      input: { up: false, down: false }
+      input: { up: false, down: false, left: false, right: false }
     };
 
     const tunnel = {
@@ -196,7 +218,9 @@
       state.score = 0;
       state.speed = 2.6;
       state.frame = 0;
+      state.ship.x = 130;
       state.ship.y = canvas.height / 2;
+      state.ship.vx = 0;
       state.ship.vy = 0;
 
       tunnel.center = canvas.height / 2;
@@ -237,13 +261,19 @@
     }
 
     function updateShip() {
-      const thrust = 0.34;
+      const verticalThrust = 0.34;
+      const horizontalThrust = 0.28;
       const drag = 0.985;
-      if (state.input.up) state.ship.vy -= thrust;
-      if (state.input.down) state.ship.vy += thrust;
+      if (state.input.up) state.ship.vy -= verticalThrust;
+      if (state.input.down) state.ship.vy += verticalThrust;
+      if (state.input.left) state.ship.vx -= horizontalThrust;
+      if (state.input.right) state.ship.vx += horizontalThrust;
+      state.ship.vx *= drag;
       state.ship.vy *= drag;
+      state.ship.x += state.ship.vx;
       state.ship.y += state.ship.vy;
-      state.ship.y = Math.max(0, Math.min(canvas.height, state.ship.y));
+      state.ship.x = Math.max(state.ship.radius + 8, Math.min(canvas.width - state.ship.radius - 8, state.ship.x));
+      state.ship.y = Math.max(state.ship.radius, Math.min(canvas.height - state.ship.radius, state.ship.y));
     }
 
     function checkCollision() {
@@ -378,6 +408,12 @@
       } else if (e.code === "ArrowDown" || e.code === "KeyS") {
         state.input.down = true;
         e.preventDefault();
+      } else if (e.code === "ArrowLeft" || e.code === "KeyA") {
+        state.input.left = true;
+        e.preventDefault();
+      } else if (e.code === "ArrowRight" || e.code === "KeyD") {
+        state.input.right = true;
+        e.preventDefault();
       } else if (e.code === "Space" && !state.running) {
         resetGame();
         e.preventDefault();
@@ -389,6 +425,10 @@
         state.input.up = false;
       } else if (e.code === "ArrowDown" || e.code === "KeyS") {
         state.input.down = false;
+      } else if (e.code === "ArrowLeft" || e.code === "KeyA") {
+        state.input.left = false;
+      } else if (e.code === "ArrowRight" || e.code === "KeyD") {
+        state.input.right = false;
       }
     });
 
@@ -424,13 +464,15 @@
     }
 
     bindTouchControl(touchUp, "up");
+    bindTouchControl(touchLeft, "left");
+    bindTouchControl(touchRight, "right");
     bindTouchControl(touchDown, "down");
 
     if ("ontouchstart" in window || navigator.maxTouchPoints > 0) {
-      touchPad.style.display = "flex";
-      updateGyroStatus("iPhone は右下コントローラーで操作できます");
+      touchPad.style.display = "grid";
+      updateGyroStatus("iPhone は右下コントローラーで上下左右に操作できます");
     } else {
-      updateGyroStatus("PCはキーボード、スマホは右下コントローラーで操作できます");
+      updateGyroStatus("PCはキーボード、スマホは右下コントローラーで上下左右に操作できます");
     }
     loop();
   </script>
