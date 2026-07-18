@@ -1373,109 +1373,41 @@
     bindTouchControl(touchRight, "right");
     bindTouchControl(touchDown, "down");
 
-    // Make fire (X) and bomb (Z) buttons draggable via long-press; short press triggers action
-    function makeDraggableAction(button, onShortPress) {
-      if (!button) return;
-      let longPressTimer = null;
-      let dragging = false;
-      let startX = 0, startY = 0, offsetX = 0, offsetY = 0;
-      const wrap = document.querySelector('.wrap');
-
-      // positions are not persisted across reloads; buttons return to initial layout on refresh
-
-      let _ctxPrevent = null;
-      const beginDrag = (clientX, clientY) => {
-        dragging = true;
-        button.classList.add('dragging');
-        // use fixed positioning during drag so it stays visible above any stacking contexts
-        button.style.position = 'fixed';
-        button.style.zIndex = '10000';
-        document.body.appendChild(button);
-        offsetX = clientX - button.getBoundingClientRect().left;
-        offsetY = clientY - button.getBoundingClientRect().top;
-        // prevent contextmenu during drag on mobile
-        _ctxPrevent = (ev) => ev.preventDefault();
-        window.addEventListener('contextmenu', _ctxPrevent, { passive: false });
-      };
-
-      const onPointerMove = (e) => {
-        if (!dragging) return;
-        const clientX = e.clientX || (e.touches && e.touches[0] && e.touches[0].clientX) || 0;
-        const clientY = e.clientY || (e.touches && e.touches[0] && e.touches[0].clientY) || 0;
-        button.style.left = Math.max(6, Math.min(wrap.clientWidth - button.offsetWidth - 6, clientX - offsetX)) + 'px';
-        button.style.top = Math.max(6, Math.min(wrap.clientHeight - button.offsetHeight - 6, clientY - offsetY)) + 'px';
-      };
-
-      const onPointerDown = (e) => {
+    // Fire and Bomb buttons: simple short-press handlers (no drag, no repeat)
+    if (touchFire) {
+      touchFire.addEventListener('pointerdown', (e) => {
         e.preventDefault();
-        const clientX = e.clientX || (e.touches && e.touches[0] && e.touches[0].clientX) || 0;
-        const clientY = e.clientY || (e.touches && e.touches[0] && e.touches[0].clientY) || 0;
-        startX = clientX; startY = clientY;
-        // attach temporary global handlers for this press
-        const moveHandler = (ev) => onPointerMove(ev);
-        const upHandler = (ev) => {
-          // ensure we cleanup handlers first
-          window.removeEventListener('pointermove', moveHandler);
-          window.removeEventListener('pointerup', upHandler);
-          window.removeEventListener('touchmove', moveHandler);
-          window.removeEventListener('touchend', upHandler);
-          // call common end logic
-          endPointer(ev);
-        };
-        window.addEventListener('pointermove', moveHandler, { passive: false });
-        window.addEventListener('pointerup', upHandler, { passive: false });
-        window.addEventListener('touchmove', moveHandler, { passive: false });
-        window.addEventListener('touchend', upHandler, { passive: false });
-        // if controls are locked (game started) trigger immediate action (single shot)
-        if (state.controlsLocked) {
-          onShortPress();
-          button.classList.add('active');
-          // remove active visual shortly after
-          setTimeout(() => button.classList.remove('active'), 120);
-        } else {
-          // before game start, long-press begins drag as before
-          longPressTimer = setTimeout(() => {
-            beginDrag(clientX, clientY);
-            longPressTimer = null;
-          }, 300);
-        }
-      };
-
-      const endPointer = (e) => {
-        if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-        if (dragging) {
-          dragging = false;
-          button.classList.remove('dragging');
-          // remove z-index override and clean up contextmenu handler
-          button.style.zIndex = '';
-          if (_ctxPrevent) {
-            window.removeEventListener('contextmenu', _ctxPrevent);
-            _ctxPrevent = null;
-          }
-          // keep final position as fixed; append back to wrap to preserve layout context
-          // convert fixed coords to wrap-relative absolute coords
-          const rect = wrap.getBoundingClientRect();
-          const brect = button.getBoundingClientRect();
-          const relX = brect.left - rect.left;
-          const relY = brect.top - rect.top;
-          button.style.position = 'absolute';
-          button.style.left = Math.max(6, Math.min(wrap.clientWidth - button.offsetWidth - 6, relX)) + 'px';
-          button.style.top = Math.max(6, Math.min(wrap.clientHeight - button.offsetHeight - 6, relY)) + 'px';
-          wrap.appendChild(button);
-          // do not persist position; leave placement transient until reload
-          return;
-        }
-        // short press already triggered on pointerdown; provide visual feedback
-        button.classList.add('active');
-        setTimeout(() => button.classList.remove('active'), 120);
-      };
-
-      button.addEventListener('pointerdown', onPointerDown, { passive: false });
-      button.addEventListener('touchstart', onPointerDown, { passive: false });
+        fireVulcan();
+        touchFire.classList.add('active');
+      }, { passive: false });
+      touchFire.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        fireVulcan();
+        touchFire.classList.add('active');
+      }, { passive: false });
+      const releaseFireButton = () => touchFire.classList.remove('active');
+      touchFire.addEventListener('pointerup', releaseFireButton, { passive: true });
+      touchFire.addEventListener('pointercancel', releaseFireButton, { passive: true });
+      touchFire.addEventListener('touchend', releaseFireButton, { passive: true });
+      touchFire.addEventListener('touchcancel', releaseFireButton, { passive: true });
     }
-
-    makeDraggableAction(touchFire, () => fireVulcan());
-    makeDraggableAction(touchBomb, () => dropBomb());
+    if (touchBomb) {
+      touchBomb.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        dropBomb();
+        touchBomb.classList.add('active');
+      }, { passive: false });
+      touchBomb.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        dropBomb();
+        touchBomb.classList.add('active');
+      }, { passive: false });
+      const releaseBombButton = () => touchBomb.classList.remove('active');
+      touchBomb.addEventListener('pointerup', releaseBombButton, { passive: true });
+      touchBomb.addEventListener('pointercancel', releaseBombButton, { passive: true });
+      touchBomb.addEventListener('touchend', releaseBombButton, { passive: true });
+      touchBomb.addEventListener('touchcancel', releaseBombButton, { passive: true });
+    }
 
     if ("ontouchstart" in window || navigator.maxTouchPoints > 0) {
       touchPad.style.display = "grid";
