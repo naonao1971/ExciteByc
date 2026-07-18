@@ -210,6 +210,7 @@
       columns: [],
       stars: [],
       frame: 0,
+      displayScore: 0,
       ship: {
         x: 130,
         y: canvas.height / 2,
@@ -220,11 +221,31 @@
         contactFrames: 0
       },
       hpItems: [],
+      // single mega HP per stage
+      megaHp: null,
+      megaHpSpawned: false,
       input: { up: false, down: false, left: false, right: false },
       effects: {
         slowTimer: 0,
         wideTimer: 0
       }
+      ,
+      // stage system
+      stage: 1,
+      stageTimer: 0, // frames elapsed in current stage
+      stageDuration: 60, // seconds per stage
+      caption: "",
+      captionTimer: 0, // frames to show caption
+      pendingStageAdvance: false
+      ,
+      gameOver: false
+      ,
+      goalHold: { active: false, frames: 0 },
+      // stage intro: phases: 'countdown' -> 'narrow'
+      stageIntro: { active: false, frames: 0, total: 0, startGap: 0, phase: null },
+      // arena bullets during intro
+      // spawnInterval: larger => fewer waves (frames)
+      arena: { bullets: [], spawnTimer: 0, spawnInterval: 60 }
     };
 
     const tunnel = {
@@ -287,6 +308,19 @@
       state.effects.wideTimer = 0;
       state.ship.hp = 100;
       state.ship.contactFrames = 0;
+      // reset stage
+      state.stage = 1;
+      state.stageTimer = 0;
+      state.caption = "";
+      state.captionTimer = 0;
+      state.pendingStageAdvance = false;
+      state.gameOver = false;
+      state.megaHp = null;
+      state.megaHpSpawned = false;
+      state.stageIntro = { active: false, frames: 0, total: 0, startGap: 0 };
+      state.arena.bullets.length = 0;
+      state.arena.spawnTimer = 0;
+      state.displayScore = 0;
 
       tunnel.center = canvas.height / 2;
       tunnel.centerVel = 0;
@@ -297,6 +331,8 @@
     function startGame() {
       resetGame();
       updateGyroStatus("開始しました。右下コントローラーで操作できます");
+      // begin stage with wide intro
+      beginStage();
     }
 
     function updateGyroStatus(message) {
@@ -704,6 +740,175 @@
       }
     }
 
+    // --- Mega HP (stage-once, full heal) ---
+    function spawnMegaHp() {
+      const x = canvas.width + 40;
+      const col = state.columns[Math.max(0, canvas.width - 2)];
+      let baseY = canvas.height / 2;
+      if (col) baseY = Math.max(col.top + 24, Math.min(col.bottom - 24, col.top + Math.random() * (col.bottom - col.top - 48)));
+      state.megaHp = {
+        x,
+        baseY,
+        y: baseY,
+        vx: 0.5 + Math.random() * 0.6,
+        phase: Math.random() * Math.PI * 2,
+        bobAmp: 8,
+        radius: 18,
+        hue: Math.floor(Math.random() * 360)
+      };
+      state.megaHpSpawned = true;
+    }
+
+    function updateMegaHp() {
+      if (!state.megaHp) {
+        // check spawn timing: spawn once per stage in later half (60%)
+        const stageSecs = state.stageDuration + (state.stage - 1) * 10;
+        const stageFrames = Math.round(stageSecs * 60);
+        const spawnFrame = Math.round(stageFrames * 0.6);
+        if (!state.megaHpSpawned && state.stageTimer >= spawnFrame) {
+          spawnMegaHp();
+        }
+        return;
+      }
+
+      const it = state.megaHp;
+      it.x -= state.scrollSpeed * 0.9 + it.vx;
+      it.y = it.baseY + Math.sin(state.frame * 0.06 + it.phase) * it.bobAmp;
+
+      // collision with ship
+      const dx = it.x - state.ship.x;
+      const dy = it.y - state.ship.y;
+      const dist2 = dx * dx + dy * dy;
+      const r = it.radius + state.ship.radius;
+      if (dist2 <= r * r) {
+        // full heal
+        state.ship.hp = 100;
+        state.bonusText = "HP FULL";
+        state.bonusTimer = 140;
+        createExplosion(it.x, it.y, "yellow");
+        state.megaHp = null;
+      }
+
+      // remove if offscreen
+      if (it.x < -80) state.megaHp = null;
+    }
+
+    function drawMegaHp() {
+      const it = state.megaHp;
+      if (!it) return;
+      // pulsing radial glow with hue
+      const pulse = 0.5 + 0.5 * Math.sin(state.frame * 0.08 + it.phase);
+      const outerR = it.radius * (1.6 + pulse * 0.6);
+      const grd = ctx.createRadialGradient(it.x, it.y, it.radius * 0.2, it.x, it.y, outerR);
+      const h = it.hue;
+      grd.addColorStop(0, `hsla(${h},100%,75%,0.98)`);
+      grd.addColorStop(0.4, `hsla(${h},90%,60%,0.55)`);
+      grd.addColorStop(1, `hsla(${(h + 40) % 360},80%,50%,0.08)`);
+      ctx.fillStyle = grd;
+      ctx.beginPath();
+      ctx.arc(it.x, it.y, outerR, 0, Math.PI * 2);
+      ctx.fill();
+
+      // central badge (white circle)
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.arc(it.x, it.y, it.radius * 0.8, 0, Math.PI * 2);
+      ctx.fill();
+
+      // plus sign
+      ctx.fillStyle = `hsl(${h},70%,30%)`;
+      ctx.fillRect(it.x - 3, it.y - 10, 6, 20);
+      ctx.fillRect(it.x - 10, it.y - 3, 20, 6);
+    }
+
+    // Arena bullets during stage intro
+    // return arena parameters based on stage (difficulty scales with stage)
+    function getArenaParams(stage) {
+      const s = Math.max(1, stage);
+      const spawnInterval = Math.max(30, 80 - (s - 1) * 6);
+      const sideSpawnChance = Math.min(0.95, 0.6 + (s - 1) * 0.05);
+      const fastProb = Math.min(0.4, 0.05 + (s - 1) * 0.03);
+      const baseMult = 5 + (s - 1) * 0.3;
+      const fastMult = 12 + (s - 1) * 1.0;
+      return { spawnInterval, sideSpawnChance, fastProb, baseMult, fastMult };
+    }
+    function spawnArenaBullets() {
+      const shipX = state.ship.x;
+      const shipY = state.ship.y;
+      const refSpeed = Math.max(1, Math.hypot(state.ship.vx, state.ship.vy));
+        const params = getArenaParams(state.stage);
+        const baseMult = params.baseMult;
+        const fastMult = params.fastMult;
+        const fastProb = params.fastProb;
+        const sideSpawnChance = params.sideSpawnChance;
+      const margin = 12;
+      const positions = [
+        { x: -margin, y: Math.random() * canvas.height },
+        { x: canvas.width + margin, y: Math.random() * canvas.height },
+        { x: Math.random() * canvas.width, y: -margin },
+        { x: Math.random() * canvas.width, y: canvas.height + margin }
+      ];
+      for (const p of positions) {
+        // skip some sides occasionally to reduce overall amount
+        if (Math.random() > sideSpawnChance) continue;
+        const mult = Math.random() < fastProb ? fastMult : baseMult;
+        const speed = refSpeed * mult;
+        const dx = shipX - p.x;
+        const dy = shipY - p.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const vx = (dx / len) * speed;
+        const vy = (dy / len) * speed;
+        state.arena.bullets.push({ x: p.x, y: p.y, vx, vy, radius: 4 });
+      }
+    }
+
+    function updateArenaBullets() {
+      // spawn timing
+      state.arena.spawnTimer++;
+        const params = getArenaParams(state.stage);
+        if (state.arena.spawnTimer >= params.spawnInterval) {
+          state.arena.spawnTimer = 0;
+          spawnArenaBullets();
+        }
+
+      const toRemove = new Set();
+      for (let i = 0; i < state.arena.bullets.length; i++) {
+        const b = state.arena.bullets[i];
+        b.x += b.vx;
+        b.y += b.vy;
+        // collision with ship
+        const dx = b.x - state.ship.x;
+        const dy = b.y - state.ship.y;
+        if (dx * dx + dy * dy <= (b.radius + state.ship.radius) * (b.radius + state.ship.radius)) {
+          toRemove.add(i);
+          state.ship.hp = Math.max(0, state.ship.hp - 5);
+          createExplosion(b.x, b.y, "red");
+          if (state.ship.hp <= 0) {
+            state.running = false;
+            state.gameOver = true;
+          }
+        }
+        // remove offscreen far
+        if (b.x < -120 || b.x > canvas.width + 120 || b.y < -120 || b.y > canvas.height + 120) {
+          toRemove.add(i);
+        }
+      }
+      if (toRemove.size > 0) {
+        state.arena.bullets = state.arena.bullets.filter((_, idx) => !toRemove.has(idx));
+      }
+    }
+
+    function drawArenaBullets() {
+      for (const b of state.arena.bullets) {
+        ctx.fillStyle = "rgba(255,80,60,0.95)";
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(255,160,140,0.35)";
+        ctx.fillRect(b.x - 6, b.y - 1, 12, 2);
+      }
+    }
+
     // rounded rect helper
     function roundRect(ctx, x, y, w, h, r) {
       ctx.beginPath();
@@ -727,10 +932,94 @@
     }
 
     function update() {
-      if (!state.running) return;
+      // always advance global frame (keeps animations consistent) and caption timer
       state.frame++;
+      if (state.captionTimer > 0) state.captionTimer--;
+
+      // handle goal hold countdown (runs even while paused)
+      if (state.goalHold && state.goalHold.active) {
+        state.goalHold.frames--;
+        // update arena bullets during goal hold
+        updateArenaBullets();
+        if (state.goalHold.frames <= 0) {
+          state.goalHold.active = false;
+          state.pendingStageAdvance = false;
+          state.stage += 1;
+          state.stageTimer = 0;
+          // reset mega HP for new stage
+          state.megaHp = null;
+          state.megaHpSpawned = false;
+          // begin next stage with wide intro
+          beginStage();
+          // reset arena bullets
+          state.arena.bullets.length = 0;
+          state.arena.spawnTimer = 0;
+        }
+      }
+
+      if (!state.running) return;
+
+      // advance stage timer (frames)
+      state.stageTimer++;
+      // stage duration increases by 10 seconds per stage (stage 1 = base duration)
+      const stageSecs = state.stageDuration + (state.stage - 1) * 10;
+      const stageFrames = Math.round(stageSecs * 60);
+      if (state.stageTimer >= stageFrames) {
+        // stage goal reached — trigger goal caption once and mark pending advance
+        state.stageTimer = stageFrames;
+        if (!state.pendingStageAdvance) {
+          state.pendingStageAdvance = true;
+          // show GOAL caption
+          showCaption("STAGE " + state.stage + " GOAL", 180);
+          // initialize goal hold: create full-width chamber and pause scroll for 30s
+          state.goalHold.active = true;
+          state.goalHold.frames = 30 * 60;
+          // reset arena spawn timer and bullets for hold
+          state.arena.spawnTimer = 0;
+          state.arena.bullets.length = 0;
+          // start the NEXT STAGE countdown when entering the wide chamber
+          state.stageIntro.active = true;
+          state.stageIntro.phase = 'countdown';
+          state.stageIntro.total = state.goalHold.frames;
+          state.stageIntro.frames = state.goalHold.frames;
+          state.stageIntro.startGap = tunnel.gap;
+          // widen the entire visible tunnel to form a chamber (full screen)
+          for (let cx = 0; cx < canvas.width; cx++) {
+            state.columns[cx] = { top: 24, bottom: canvas.height - 24 };
+          }
+        }
+      }
+
       state.speed = Math.min(state.maxSpeed, state.speed + 0.00075);
       state.scrollSpeed = state.effects.slowTimer > 0 ? state.speed * 0.72 : state.speed;
+      // enforce scroll freeze during goal hold
+      if (state.goalHold && state.goalHold.active) state.scrollSpeed = 0;
+      // handle stage intro phases
+      if (state.stageIntro && state.stageIntro.active) {
+        // countdown phase
+        if (state.stageIntro.phase === 'countdown') {
+          state.stageIntro.frames = Math.max(0, state.stageIntro.frames - 1);
+          if (state.stageIntro.frames <= 0) {
+            // switch to narrowing phase
+            state.stageIntro.phase = 'narrow';
+            state.stageIntro.total = Math.round(3 * 60);
+            state.stageIntro.frames = state.stageIntro.total;
+            state.stageIntro.startGap = tunnel.gap;
+            // clear arena bullets
+            state.arena.bullets.length = 0;
+          }
+        } else if (state.stageIntro.phase === 'narrow') {
+          state.stageIntro.frames = Math.max(0, state.stageIntro.frames - 1);
+          const total = Math.max(1, state.stageIntro.total || 1);
+          const progress = 1 - state.stageIntro.frames / total; // 0..1
+          const targetGap = 170;
+          const startGap = state.stageIntro.startGap || tunnel.gap;
+          tunnel.gap = startGap * (1 - progress) + targetGap * progress;
+          if (state.stageIntro.frames <= 0) {
+            state.stageIntro.active = false;
+          }
+        }
+      }
       if (state.effects.slowTimer > 0) state.effects.slowTimer--;
       if (state.effects.wideTimer > 0) state.effects.wideTimer--;
       if (state.bonusTimer > 0) state.bonusTimer--;
@@ -741,6 +1030,9 @@
       updateBombs();
       updateExplosions();
       updateHpItems();
+      updateMegaHp();
+      // smooth display score for visible count-up
+      state.displayScore += (state.score - state.displayScore) * 0.18;
       // collision handling: count contact duration and apply 5 HP every 0.1s
       const penetration = getCollisionPenetration();
       // assume ~60fps; 0.1s -> ~6 frames (round to nearest)
@@ -753,6 +1045,7 @@
           if (state.ship.hp <= 0) {
             createExplosion(state.ship.x, state.ship.y, "red");
             state.running = false;
+            state.gameOver = true;
           }
         }
       } else {
@@ -878,8 +1171,17 @@
     function drawHud() {
       ctx.fillStyle = "#dbe6ff";
       ctx.font = "20px ui-monospace, SFMono-Regular, Menlo, monospace";
-      ctx.fillText(`SCORE ${Math.floor(state.score / 8)}`, 20, 32);
+      ctx.fillText(`SCORE ${Math.floor(state.displayScore)}`, 20, 32);
       ctx.fillText(`SPD ${state.scrollSpeed.toFixed(2)}`, 20, 58);
+
+      // remaining time for current stage
+      if (state.running) {
+        const stageSecs = state.stageDuration + (state.stage - 1) * 10;
+        const stageFrames = Math.round(stageSecs * 60);
+        const remainingFrames = Math.max(0, stageFrames - state.stageTimer);
+        const remainingSecs = Math.ceil(remainingFrames / 60);
+        ctx.fillText(`TIME ${remainingSecs}s`, 20, 84);
+      }
 
       // HP bar (右上)
       const hp = typeof state.ship.hp === 'number' ? state.ship.hp : 0;
@@ -905,10 +1207,10 @@
       if (state.bonusTimer > 0) {
         ctx.fillStyle = "#ffe08a";
         ctx.font = "16px ui-monospace, SFMono-Regular, Menlo, monospace";
-        ctx.fillText(state.bonusText, 20, 84);
+        ctx.fillText(state.bonusText, 20, 110);
       }
 
-      if (!state.running) {
+      if (state.gameOver) {
         ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.fillStyle = "#ffffff";
@@ -919,17 +1221,74 @@
         ctx.fillText("Space で再スタート", canvas.width / 2, canvas.height / 2 + 28);
         ctx.textAlign = "left";
       }
+
+      // arena countdown display (during stage intro countdown)
+      if (state.stageIntro && state.stageIntro.active && state.stageIntro.phase === 'countdown') {
+        const remaining = Math.ceil(state.stageIntro.frames / 60);
+        ctx.save();
+        ctx.fillStyle = "rgba(0,0,0,0.6)";
+        ctx.fillRect(canvas.width / 2 - 120, 16, 240, 46);
+        ctx.fillStyle = "#fff6c8";
+        ctx.textAlign = "center";
+        ctx.font = "bold 24px ui-sans-serif, system-ui";
+        ctx.fillText(`NEXT STAGE IN ${remaining}s`, canvas.width / 2, 16 + 32);
+        ctx.restore();
+        ctx.textAlign = "left";
+      }
+
+      // caption (stage start / goal)
+      if (state.captionTimer > 0 && state.caption) {
+        ctx.save();
+        ctx.fillStyle = "rgba(0,0,0,0.6)";
+        ctx.fillRect(canvas.width / 2 - 260, 60, 520, 64);
+        ctx.fillStyle = "#ffffff";
+        ctx.textAlign = "center";
+        ctx.font = "bold 28px ui-sans-serif, system-ui";
+        ctx.fillText(state.caption, canvas.width / 2, 60 + 42);
+        ctx.restore();
+        ctx.textAlign = "left";
+      }
     }
 
     function render() {
       drawBackground();
       drawTunnel();
+      drawMegaHp();
+      drawArenaBullets();
       drawHpItems();
       drawBullets();
       drawBombs();
       drawExplosions();
       drawShip();
       drawHud();
+    }
+
+    function showCaption(text, frames) {
+      state.caption = text;
+      state.captionTimer = Math.max(0, frames | 0);
+    }
+
+    function beginStage() {
+      // show caption
+      showCaption(`STAGE ${state.stage} START`, 120);
+      // set wide starting gap and seed columns to show wide space
+      const wideGap = Math.max(tunnel.maxGap, tunnel.gap, 360);
+      tunnel.gap = wideGap;
+      // immediately enter narrowing phase for stage start (no initial countdown)
+      state.stageIntro.total = Math.round(3 * 60);
+      state.stageIntro.frames = state.stageIntro.total;
+      state.stageIntro.startGap = wideGap;
+      state.stageIntro.phase = 'narrow';
+      state.stageIntro.active = true;
+      // rebuild columns as wide
+      for (let cx = 0; cx < canvas.width; cx++) {
+        state.columns[cx] = { top: 24, bottom: canvas.height - 24 };
+      }
+      // ensure game runs and scrolling happens
+      state.running = true;
+      // reset arena bullets
+      state.arena.bullets.length = 0;
+      state.arena.spawnTimer = 0;
     }
 
     function loop() {
