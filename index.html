@@ -1378,9 +1378,6 @@
       if (!button) return;
       let longPressTimer = null;
       let dragging = false;
-      let repeatTimeout = null;
-      let repeatIntervalId = null;
-      let shortPressTimeout = null;
       let startX = 0, startY = 0, offsetX = 0, offsetY = 0;
       const wrap = document.querySelector('.wrap');
 
@@ -1429,22 +1426,12 @@
         window.addEventListener('pointerup', upHandler, { passive: false });
         window.addEventListener('touchmove', moveHandler, { passive: false });
         window.addEventListener('touchend', upHandler, { passive: false });
-        // schedule short-press action with a small delay so drag can cancel it
-        shortPressTimeout = setTimeout(() => {
-          shortPressTimeout = null;
+        // if controls are locked (game started) trigger immediate action (single shot)
+        if (state.controlsLocked) {
           onShortPress();
           button.classList.add('active');
+          // remove active visual shortly after
           setTimeout(() => button.classList.remove('active'), 120);
-        }, 60);
-        // if controls are locked (game started) begin repeat fire on hold
-        if (state.controlsLocked) {
-          // start repeating after short delay
-          repeatTimeout = setTimeout(() => {
-            // cancel the short-press since we're going into repeat
-            if (shortPressTimeout) { clearTimeout(shortPressTimeout); shortPressTimeout = null; }
-            repeatIntervalId = setInterval(() => onShortPress(), 120);
-            repeatTimeout = null;
-          }, 300);
         } else {
           // before game start, long-press begins drag as before
           longPressTimer = setTimeout(() => {
@@ -1456,9 +1443,6 @@
 
       const endPointer = (e) => {
         if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-        if (shortPressTimeout) { clearTimeout(shortPressTimeout); shortPressTimeout = null; }
-        if (repeatTimeout) { clearTimeout(repeatTimeout); repeatTimeout = null; }
-        if (repeatIntervalId) { clearInterval(repeatIntervalId); repeatIntervalId = null; }
         if (dragging) {
           dragging = false;
           button.classList.remove('dragging');
