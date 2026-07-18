@@ -1396,23 +1396,38 @@
         offsetY = clientY - button.getBoundingClientRect().top;
       };
 
-      const onPointerDown = (e) => {
-        e.preventDefault();
-        const clientX = e.clientX || (e.touches && e.touches[0] && e.touches[0].clientX) || 0;
-        const clientY = e.clientY || (e.touches && e.touches[0] && e.touches[0].clientY) || 0;
-        startX = clientX; startY = clientY;
-        longPressTimer = setTimeout(() => {
-          beginDrag(clientX, clientY);
-          longPressTimer = null;
-        }, 300);
-      };
-
       const onPointerMove = (e) => {
         if (!dragging) return;
         const clientX = e.clientX || (e.touches && e.touches[0] && e.touches[0].clientX) || 0;
         const clientY = e.clientY || (e.touches && e.touches[0] && e.touches[0].clientY) || 0;
         button.style.left = Math.max(6, Math.min(wrap.clientWidth - button.offsetWidth - 6, clientX - offsetX)) + 'px';
         button.style.top = Math.max(6, Math.min(wrap.clientHeight - button.offsetHeight - 6, clientY - offsetY)) + 'px';
+      };
+
+      const onPointerDown = (e) => {
+        e.preventDefault();
+        const clientX = e.clientX || (e.touches && e.touches[0] && e.touches[0].clientX) || 0;
+        const clientY = e.clientY || (e.touches && e.touches[0] && e.touches[0].clientY) || 0;
+        startX = clientX; startY = clientY;
+        // attach temporary global handlers for this press
+        const moveHandler = (ev) => onPointerMove(ev);
+        const upHandler = (ev) => {
+          // ensure we cleanup handlers first
+          window.removeEventListener('pointermove', moveHandler);
+          window.removeEventListener('pointerup', upHandler);
+          window.removeEventListener('touchmove', moveHandler);
+          window.removeEventListener('touchend', upHandler);
+          // call common end logic
+          endPointer(ev);
+        };
+        window.addEventListener('pointermove', moveHandler, { passive: false });
+        window.addEventListener('pointerup', upHandler, { passive: false });
+        window.addEventListener('touchmove', moveHandler, { passive: false });
+        window.addEventListener('touchend', upHandler, { passive: false });
+        longPressTimer = setTimeout(() => {
+          beginDrag(clientX, clientY);
+          longPressTimer = null;
+        }, 300);
       };
 
       const endPointer = (e) => {
@@ -1432,12 +1447,7 @@
       };
 
       button.addEventListener('pointerdown', onPointerDown, { passive: false });
-      window.addEventListener('pointermove', onPointerMove, { passive: false });
-      window.addEventListener('pointerup', endPointer, { passive: false });
-      // fallback touch events
       button.addEventListener('touchstart', onPointerDown, { passive: false });
-      window.addEventListener('touchmove', onPointerMove, { passive: false });
-      window.addEventListener('touchend', endPointer, { passive: false });
     }
 
     makeDraggableAction(touchFire, () => fireVulcan());
