@@ -1385,13 +1385,19 @@
 
       // positions are not persisted across reloads; buttons return to initial layout on refresh
 
+      let _ctxPrevent = null;
       const beginDrag = (clientX, clientY) => {
         dragging = true;
         button.classList.add('dragging');
         button.style.position = 'absolute';
+        // raise above canvas so it doesn't get hidden on mobile
+        button.style.zIndex = '10000';
         wrap.appendChild(button);
         offsetX = clientX - button.getBoundingClientRect().left;
         offsetY = clientY - button.getBoundingClientRect().top;
+        // prevent contextmenu during drag on mobile
+        _ctxPrevent = (ev) => ev.preventDefault();
+        window.addEventListener('contextmenu', _ctxPrevent, { passive: false });
       };
 
       const onPointerMove = (e) => {
@@ -1447,6 +1453,12 @@
         if (dragging) {
           dragging = false;
           button.classList.remove('dragging');
+          // remove z-index override and clean up contextmenu handler
+          button.style.zIndex = '';
+          if (_ctxPrevent) {
+            window.removeEventListener('contextmenu', _ctxPrevent);
+            _ctxPrevent = null;
+          }
           // do not persist position; leave placement transient until reload
           return;
         }
