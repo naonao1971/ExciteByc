@@ -1378,6 +1378,8 @@
       if (!button) return;
       let longPressTimer = null;
       let dragging = false;
+      let repeatTimeout = null;
+      let repeatIntervalId = null;
       let startX = 0, startY = 0, offsetX = 0, offsetY = 0;
       const wrap = document.querySelector('.wrap');
 
@@ -1420,7 +1422,17 @@
         window.addEventListener('pointerup', upHandler, { passive: false });
         window.addEventListener('touchmove', moveHandler, { passive: false });
         window.addEventListener('touchend', upHandler, { passive: false });
-        if (!state.controlsLocked) {
+        // trigger immediate single action on press
+        onShortPress();
+        // if controls are locked (game started) begin repeat fire on hold
+        if (state.controlsLocked) {
+          // start repeating after short delay
+          repeatTimeout = setTimeout(() => {
+            repeatIntervalId = setInterval(() => onShortPress(), 120);
+            repeatTimeout = null;
+          }, 300);
+        } else {
+          // before game start, long-press begins drag as before
           longPressTimer = setTimeout(() => {
             beginDrag(clientX, clientY);
             longPressTimer = null;
@@ -1430,14 +1442,15 @@
 
       const endPointer = (e) => {
         if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+        if (repeatTimeout) { clearTimeout(repeatTimeout); repeatTimeout = null; }
+        if (repeatIntervalId) { clearInterval(repeatIntervalId); repeatIntervalId = null; }
         if (dragging) {
           dragging = false;
           button.classList.remove('dragging');
           // do not persist position; leave placement transient until reload
           return;
         }
-        // short press -> trigger action
-        onShortPress();
+        // short press already triggered on pointerdown; provide visual feedback
         button.classList.add('active');
         setTimeout(() => button.classList.remove('active'), 120);
       };
