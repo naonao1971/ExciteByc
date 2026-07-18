@@ -78,15 +78,13 @@
       font-size: 13px;
     }
     .touch-pad {
-      position: absolute;
-      right: 220px;
-      bottom: 96px;
-      z-index: 3;
+      position: relative;
+      z-index: 1;
       display: none;
       grid-template-columns: repeat(3, 56px);
       grid-template-rows: repeat(3, 56px);
       gap: 8px;
-      pointer-events: none;
+      pointer-events: auto;
     }
     .touch-up {
       grid-column: 2;
@@ -105,12 +103,10 @@
       grid-row: 3;
     }
     .fire-pad {
-      position: absolute;
-      right: 90px;
-      bottom: 136px;
-      z-index: 3;
+      position: relative;
+      z-index: 1;
       display: none;
-      pointer-events: none;
+      pointer-events: auto;
       display: flex;
       flex-direction: column;
       gap: 8px;
@@ -146,21 +142,37 @@
       border-color: #7db0ff;
       transform: translateY(1px);
     }
+    .controls-bottom {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: 18px;
+      z-index: 3;
+      display: flex;
+      gap: 14px;
+      align-items: flex-end;
+      pointer-events: none;
+    }
+    .controls-bottom > * {
+      pointer-events: auto;
+    }
   </style>
 </head>
 <body>
   <div class="wrap">
     <canvas id="game" width="960" height="540" aria-label="Scramble tunnel game"></canvas>
     <div id="gyroStatus" class="status" style="display:none"></div>
-    <div id="touchPad" class="touch-pad" aria-label="タッチコントローラー">
-      <button id="touchUp" class="touch-btn touch-up" type="button" aria-label="上昇">▲</button>
-      <button id="touchLeft" class="touch-btn touch-left" type="button" aria-label="左移動">◀</button>
-      <button id="touchRight" class="touch-btn touch-right" type="button" aria-label="右移動">▶</button>
-      <button id="touchDown" class="touch-btn touch-down" type="button" aria-label="下降">▼</button>
-    </div>
-    <div id="firePad" class="fire-pad" aria-label="発射ボタン">
-      <button id="touchFire" class="touch-btn touch-fire" type="button" aria-label="バルカン発射">X</button>
-      <button id="touchBomb" class="touch-btn touch-bomb" type="button" aria-label="爆弾投下">💣</button>
+    <div class="controls-bottom" aria-hidden="false">
+      <div id="touchPad" class="touch-pad" aria-label="タッチコントローラー">
+        <button id="touchUp" class="touch-btn touch-up" type="button" aria-label="上昇">▲</button>
+        <button id="touchLeft" class="touch-btn touch-left" type="button" aria-label="左移動">◀</button>
+        <button id="touchRight" class="touch-btn touch-right" type="button" aria-label="右移動">▶</button>
+        <button id="touchDown" class="touch-btn touch-down" type="button" aria-label="下降">▼</button>
+      </div>
+      <div id="firePad" class="fire-pad" aria-label="発射ボタン">
+        <button id="touchFire" class="touch-btn touch-fire" type="button" aria-label="バルカン発射">X</button>
+        <button id="touchBomb" class="touch-btn touch-bomb" type="button" aria-label="爆弾投下">💣</button>
+      </div>
     </div>
   </div>
 
