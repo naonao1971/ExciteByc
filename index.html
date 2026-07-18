@@ -215,7 +215,8 @@
         y: canvas.height / 2,
         vx: 0,
         vy: 0,
-        radius: 11
+        radius: 11,
+        hp: 100
       },
       input: { up: false, down: false, left: false, right: false },
       effects: {
@@ -282,6 +283,7 @@
       state.bonusTimer = 0;
       state.effects.slowTimer = 0;
       state.effects.wideTimer = 0;
+      state.ship.hp = 100;
 
       tunnel.center = canvas.height / 2;
       tunnel.centerVel = 0;
@@ -432,6 +434,20 @@
       );
     }
 
+    // returns penetration amount in pixels (0 if no collision)
+    function getCollisionPenetration() {
+      const x = Math.floor(state.ship.x);
+      const column = state.columns[x];
+      if (!column) return 0;
+      if (state.ship.y - state.ship.radius < column.top) {
+        return column.top - (state.ship.y - state.ship.radius);
+      }
+      if (state.ship.y + state.ship.radius > column.bottom) {
+        return (state.ship.y + state.ship.radius) - column.bottom;
+      }
+      return 0;
+    }
+
     function updateStars() {
       for (const s of state.stars) {
         s.x -= state.scrollSpeed * s.z * 0.4;
@@ -557,8 +573,18 @@
       updateBullets();
       updateBombs();
       updateExplosions();
-      if (checkCollision()) {
-        state.running = false;
+      // collision handling now reduces HP based on penetration and impact speed
+      const penetration = getCollisionPenetration();
+      if (penetration > 0) {
+        const speed = Math.hypot(state.ship.vx, state.ship.vy);
+        // damage scales with penetration and some with speed
+        const damage = Math.ceil(penetration * 1.6 + speed * 2);
+        state.ship.hp = Math.max(0, state.ship.hp - damage);
+        // when HP depleted, explode and stop the game
+        if (state.ship.hp <= 0) {
+          createExplosion(state.ship.x, state.ship.y, "red");
+          state.running = false;
+        }
       } else {
         state.score += 1;
       }
@@ -682,6 +708,27 @@
       ctx.font = "20px ui-monospace, SFMono-Regular, Menlo, monospace";
       ctx.fillText(`SCORE ${Math.floor(state.score / 8)}`, 20, 32);
       ctx.fillText(`SPD ${state.scrollSpeed.toFixed(2)}`, 20, 58);
+
+      // HP bar (右上)
+      const hp = typeof state.ship.hp === 'number' ? state.ship.hp : 0;
+      const maxHp = 100;
+      const barW = 200;
+      const barH = 14;
+      const bx = canvas.width - barW - 20;
+      const by = 18;
+      ctx.fillStyle = "rgba(0,0,0,0.45)";
+      ctx.fillRect(bx, by, barW, barH);
+      const pct = Math.max(0, Math.min(1, hp / maxHp));
+      ctx.fillStyle = pct > 0.6 ? "#4caf50" : pct > 0.3 ? "#ffb300" : "#e53935";
+      ctx.fillRect(bx + 1, by + 1, Math.max(2, (barW - 2) * pct), barH - 2);
+      ctx.strokeStyle = "#9db0ff";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(bx + 0.5, by + 0.5, barW - 0, barH - 0);
+      ctx.fillStyle = "#dbe6ff";
+      ctx.font = "12px ui-monospace, SFMono-Regular, Menlo, monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(`HP ${Math.floor(hp)}/${maxHp}`, bx + barW / 2, by + barH - 3);
+      ctx.textAlign = "left";
 
       if (state.bonusTimer > 0) {
         ctx.fillStyle = "#ffe08a";
