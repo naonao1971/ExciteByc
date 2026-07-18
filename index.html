@@ -198,6 +198,8 @@
     const state = {
       running: true,
       score: 0,
+      // when true, control buttons cannot be moved (locked after start)
+      controlsLocked: false,
       speed: 2.6,
       maxSpeed: 6.2,
       bullets: [],
@@ -315,6 +317,8 @@
       state.captionTimer = 0;
       state.pendingStageAdvance = false;
       state.gameOver = false;
+      // allow moving controls until the player actually starts
+      state.controlsLocked = false;
       state.megaHp = null;
       state.megaHpSpawned = false;
       state.stageIntro = { active: false, frames: 0, total: 0, startGap: 0 };
@@ -333,6 +337,8 @@
       updateGyroStatus("開始しました。右下コントローラーで操作できます");
       // begin stage with wide intro
       beginStage();
+      // lock control positions once the stage has started
+      state.controlsLocked = true;
     }
 
     function updateGyroStatus(message) {
@@ -1414,10 +1420,12 @@
         window.addEventListener('pointerup', upHandler, { passive: false });
         window.addEventListener('touchmove', moveHandler, { passive: false });
         window.addEventListener('touchend', upHandler, { passive: false });
-        longPressTimer = setTimeout(() => {
-          beginDrag(clientX, clientY);
-          longPressTimer = null;
-        }, 300);
+        if (!state.controlsLocked) {
+          longPressTimer = setTimeout(() => {
+            beginDrag(clientX, clientY);
+            longPressTimer = null;
+          }, 300);
+        }
       };
 
       const endPointer = (e) => {
