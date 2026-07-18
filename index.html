@@ -1367,44 +1367,81 @@
     bindTouchControl(touchRight, "right");
     bindTouchControl(touchDown, "down");
 
-    touchFire.addEventListener("pointerdown", (e) => {
-      e.preventDefault();
-      fireVulcan();
-      touchFire.classList.add("active");
-    }, { passive: false });
+    // Make fire (X) and bomb (Z) buttons draggable via long-press; short press triggers action
+    function makeDraggableAction(button, onShortPress) {
+      if (!button) return;
+      let longPressTimer = null;
+      let dragging = false;
+      let startX = 0, startY = 0, offsetX = 0, offsetY = 0;
+      const wrap = document.querySelector('.wrap');
 
-    touchFire.addEventListener("touchstart", (e) => {
-      e.preventDefault();
-      fireVulcan();
-      touchFire.classList.add("active");
-    }, { passive: false });
+      // restore saved position
+      try {
+        const saved = localStorage.getItem('btnpos-' + button.id);
+        if (saved) {
+          const p = JSON.parse(saved);
+          button.style.position = 'absolute';
+          button.style.left = p.x + 'px';
+          button.style.top = p.y + 'px';
+          wrap.appendChild(button);
+        }
+      } catch (e) {}
 
-    const releaseFireButton = () => {
-      touchFire.classList.remove("active");
-    };
+      const beginDrag = (clientX, clientY) => {
+        dragging = true;
+        button.classList.add('dragging');
+        button.style.position = 'absolute';
+        wrap.appendChild(button);
+        offsetX = clientX - button.getBoundingClientRect().left;
+        offsetY = clientY - button.getBoundingClientRect().top;
+      };
 
-    touchFire.addEventListener("pointerup", releaseFireButton, { passive: true });
-    touchFire.addEventListener("pointercancel", releaseFireButton, { passive: true });
-    touchFire.addEventListener("touchend", releaseFireButton, { passive: true });
-    touchFire.addEventListener("touchcancel", releaseFireButton, { passive: true });
-
-    if (touchBomb) {
-      touchBomb.addEventListener("pointerdown", (e) => {
+      const onPointerDown = (e) => {
         e.preventDefault();
-        dropBomb();
-        touchBomb.classList.add("active");
-      }, { passive: false });
-      touchBomb.addEventListener("touchstart", (e) => {
-        e.preventDefault();
-        dropBomb();
-        touchBomb.classList.add("active");
-      }, { passive: false });
-      const releaseBombButton = () => touchBomb.classList.remove("active");
-      touchBomb.addEventListener("pointerup", releaseBombButton, { passive: true });
-      touchBomb.addEventListener("pointercancel", releaseBombButton, { passive: true });
-      touchBomb.addEventListener("touchend", releaseBombButton, { passive: true });
-      touchBomb.addEventListener("touchcancel", releaseBombButton, { passive: true });
+        const clientX = e.clientX || (e.touches && e.touches[0] && e.touches[0].clientX) || 0;
+        const clientY = e.clientY || (e.touches && e.touches[0] && e.touches[0].clientY) || 0;
+        startX = clientX; startY = clientY;
+        longPressTimer = setTimeout(() => {
+          beginDrag(clientX, clientY);
+          longPressTimer = null;
+        }, 300);
+      };
+
+      const onPointerMove = (e) => {
+        if (!dragging) return;
+        const clientX = e.clientX || (e.touches && e.touches[0] && e.touches[0].clientX) || 0;
+        const clientY = e.clientY || (e.touches && e.touches[0] && e.touches[0].clientY) || 0;
+        button.style.left = Math.max(6, Math.min(wrap.clientWidth - button.offsetWidth - 6, clientX - offsetX)) + 'px';
+        button.style.top = Math.max(6, Math.min(wrap.clientHeight - button.offsetHeight - 6, clientY - offsetY)) + 'px';
+      };
+
+      const endPointer = (e) => {
+        if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+        if (dragging) {
+          dragging = false;
+          button.classList.remove('dragging');
+          try {
+            localStorage.setItem('btnpos-' + button.id, JSON.stringify({ x: parseInt(button.style.left||0,10), y: parseInt(button.style.top||0,10) }));
+          } catch (err) {}
+          return;
+        }
+        // short press -> trigger action
+        onShortPress();
+        button.classList.add('active');
+        setTimeout(() => button.classList.remove('active'), 120);
+      };
+
+      button.addEventListener('pointerdown', onPointerDown, { passive: false });
+      window.addEventListener('pointermove', onPointerMove, { passive: false });
+      window.addEventListener('pointerup', endPointer, { passive: false });
+      // fallback touch events
+      button.addEventListener('touchstart', onPointerDown, { passive: false });
+      window.addEventListener('touchmove', onPointerMove, { passive: false });
+      window.addEventListener('touchend', endPointer, { passive: false });
     }
+
+    makeDraggableAction(touchFire, () => fireVulcan());
+    makeDraggableAction(touchBomb, () => dropBomb());
 
     if ("ontouchstart" in window || navigator.maxTouchPoints > 0) {
       touchPad.style.display = "grid";
