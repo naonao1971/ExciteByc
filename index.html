@@ -153,8 +153,13 @@
       pointer-events: none;
     }
     .fire-pad {
-      /* move fire/bomb buttons slightly left */
-      transform: translateX(-24px);
+      /* pin fire/bomb buttons to the left-bottom of the viewport */
+      position: fixed;
+      left: 18px;
+      bottom: 18px;
+      transform: none;
+      z-index: 6;
+      pointer-events: auto;
     }
     .controls-bottom > * {
       pointer-events: auto;
