@@ -256,7 +256,9 @@
       stageIntro: { active: false, frames: 0, total: 0, startGap: 0, phase: null },
       // arena bullets during intro
       // spawnInterval: larger => fewer waves (frames)
-      arena: { bullets: [], spawnTimer: 0, spawnInterval: 60 }
+      arena: { bullets: [], spawnTimer: 0, spawnInterval: 60 },
+      // laser beam: hold X for 3s to charge, then fire
+      laser: { charging: false, chargeFrames: 0, chargeDuration: 180, beam: null }
     };
 
     const tunnel = {
@@ -334,6 +336,9 @@
       state.arena.bullets.length = 0;
       state.arena.spawnTimer = 0;
       state.displayScore = 0;
+      state.laser.charging = false;
+      state.laser.chargeFrames = 0;
+      state.laser.beam = null;
 
       tunnel.center = canvas.height / 2;
       tunnel.centerVel = 0;
@@ -888,11 +893,16 @@
         const dy = b.y - state.ship.y;
         if (dx * dx + dy * dy <= (b.radius + state.ship.radius) * (b.radius + state.ship.radius)) {
           toRemove.add(i);
-          state.ship.hp = Math.max(0, state.ship.hp - 5);
-          createExplosion(b.x, b.y, "red");
-          if (state.ship.hp <= 0) {
-            state.running = false;
-            state.gameOver = true;
+          // allow one-time shield when laser is fully charged
+          if (!tryUseLaserShield()) {
+            // reset any in-progress laser charge when actually taking damage
+            releaseLaserChargeOnHit();
+            state.ship.hp = Math.max(0, state.ship.hp - 5);
+            createExplosion(b.x, b.y, "red");
+            if (state.ship.hp <= 0) {
+              state.running = false;
+              state.gameOver = true;
+            }
           }
         }
         // remove offscreen far
@@ -1036,6 +1046,7 @@
       updateBullets();
       updateBombs();
       updateExplosions();
+      updateLaser();
       updateHpItems();
       updateMegaHp();
       // smooth display score for visible count-up
@@ -1048,11 +1059,15 @@
         state.ship.contactFrames++;
         if (state.ship.contactFrames >= CONTACT_FRAMES_THRESHOLD) {
           state.ship.contactFrames = 0;
-          state.ship.hp = Math.max(0, state.ship.hp - 5);
-          if (state.ship.hp <= 0) {
-            createExplosion(state.ship.x, state.ship.y, "red");
-            state.running = false;
-            state.gameOver = true;
+          if (!tryUseLaserShield()) {
+            // reset any in-progress laser charge when actually taking contact damage
+            releaseLaserChargeOnHit();
+            state.ship.hp = Math.max(0, state.ship.hp - 5);
+            if (state.ship.hp <= 0) {
+              createExplosion(state.ship.x, state.ship.y, "red");
+              state.running = false;
+              state.gameOver = true;
+            }
           }
         }
       } else {
@@ -1267,6 +1282,7 @@
       drawBombs();
       drawExplosions();
       drawShip();
+      drawLaser();
       drawHud();
     }
 
@@ -1298,6 +1314,166 @@
       state.arena.spawnTimer = 0;
     }
 
+    // ── Laser beam ──────────────────────────────────────────────────────────
+    function startLaserCharge() {
+      if (!state.running) { fireVulcan(); return; }
+      state.laser.charging = true;
+      state.laser.chargeFrames = 0;
+      state.laser._pressStartFrame = state.frame;
+      // reset one-time shield consumption when starting a new charge
+      state.laser._shieldConsumed = false;
+    }
+
+    function stopLaserCharge() {
+      const laser = state.laser;
+      if (laser.charging) {
+        const pressFrames = (laser._pressStartFrame != null) ? (state.frame - laser._pressStartFrame) : laser.chargeFrames;
+        const TAP_THRESHOLD = 8; // frames (~133ms at 60fps) considered a tap
+        if (laser.chargeFrames >= laser.chargeDuration) {
+          // fully charged on release → fire laser
+          fireLaserBeam();
+        } else if (pressFrames <= TAP_THRESHOLD) {
+          // short tap -> fire vulcan
+          fireVulcan();
+        }
+        // reset charge state in all cases
+        laser.charging = false;
+        laser.chargeFrames = 0;
+        laser._pressStartFrame = null;
+        laser._shieldConsumed = false;
+      }
+    }
+
+    function fireLaserBeam() {
+      const laser = state.laser;
+      const height = state.ship.radius * 2; // beam height = ship diameter
+      const yCenter = state.ship.y;
+      laser.beam = { x: state.ship.x + state.ship.radius + 4, yCenter, height, speed: 22, frames: 0 };
+      laser.chargeFrames = 0;
+      laser.charging = false;
+      // firing clears the one-time shield state
+      laser._shieldConsumed = false;
+    }
+
+    function updateLaser() {
+      const laser = state.laser;
+      // accumulate charge (no auto-fire; beam fires on release via stopLaserCharge)
+      if (laser.charging && !laser.beam) {
+        laser.chargeFrames = Math.min(laser.chargeDuration, laser.chargeFrames + 1);
+      }
+      // update charge glow on X button
+      if (touchFire) {
+        const pct = laser.chargeFrames / laser.chargeDuration;
+        if (laser.charging && pct > 0 && !laser.beam) {
+          touchFire.style.boxShadow = `0 0 ${6 + pct * 22}px rgba(80,210,255,${0.4 + pct * 0.6})`;
+          touchFire.style.borderColor = `hsl(${190 + pct * 30},100%,70%)`;
+        } else if (!laser.charging) {
+          touchFire.style.boxShadow = '';
+          touchFire.style.borderColor = '';
+        }
+      }
+      // move beam
+      if (!laser.beam) return;
+      const b = laser.beam;
+      b.x += b.speed;
+      b.frames++;
+      // break walls: widen columns swept by beam
+      const cx0 = Math.max(0, Math.floor(b.x) - 6);
+      const cx1 = Math.min(state.columns.length - 1, Math.floor(b.x) + 6);
+      for (let cx = cx0; cx <= cx1; cx++) {
+        const col = state.columns[cx];
+        const beamTop    = b.yCenter - b.height / 2 - 6;
+        const beamBottom = b.yCenter + b.height / 2 + 6;
+        if (col.top  > beamTop)    col.top    = Math.max(4, beamTop);
+        if (col.bottom < beamBottom) col.bottom = Math.min(canvas.height - 4, beamBottom);
+      }
+      // beam exits screen → clean up
+      if (b.x > canvas.width + 60) laser.beam = null;
+    }
+
+    function tryUseLaserShield() {
+      const laser = state.laser;
+      // only while fully charged and before beam has been fired
+      if (laser && laser.chargeFrames >= laser.chargeDuration && !laser.beam && !laser._shieldConsumed) {
+        // consume single-use shield without releasing the charge
+        laser._shieldConsumed = true;
+        // small visual feedback
+        createExplosion(state.ship.x, state.ship.y, "cyan");
+        return true;
+      }
+      return false;
+    }
+
+    function releaseLaserChargeOnHit() {
+      const laser = state.laser;
+      if (!laser) return;
+      // If currently charging (but not necessarily full), release/reset the charge
+      if (laser.charging || laser.chargeFrames > 0) {
+        laser.charging = false;
+        laser.chargeFrames = 0;
+        laser._pressStartFrame = null;
+        laser._shieldConsumed = false;
+        // clear touch button visuals if present
+        if (touchFire) {
+          touchFire.style.boxShadow = '';
+          touchFire.style.borderColor = '';
+        }
+      }
+    }
+
+    function drawLaser() {
+      const laser = state.laser;
+      // charge ring around ship
+      if (laser.charging && laser.chargeFrames > 0 && !laser.beam) {
+        const pct = laser.chargeFrames / laser.chargeDuration;
+        ctx.save();
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = `rgba(80,210,255,${0.5 + 0.5 * pct})`;
+        ctx.shadowColor = '#44ccff';
+        ctx.shadowBlur = 10 * pct;
+        ctx.beginPath();
+        ctx.arc(state.ship.x, state.ship.y,
+          state.ship.radius + 8 + pct * 6,
+          -Math.PI / 2,
+          -Math.PI / 2 + Math.PI * 2 * pct);
+        ctx.stroke();
+        // fully charged flash
+        if (pct >= 1) {
+          ctx.globalAlpha = 0.3 + 0.3 * Math.sin(state.frame * 0.4);
+          ctx.fillStyle = 'rgba(80,210,255,0.25)';
+          ctx.beginPath();
+          ctx.arc(state.ship.x, state.ship.y, state.ship.radius + 16, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+      // draw beam
+      if (!laser.beam) return;
+      const b = laser.beam;
+      const tailX   = state.ship.x;
+      const headX   = b.x;
+      const halfH   = b.height / 2;
+      ctx.save();
+      ctx.shadowColor = '#88eeff';
+      ctx.shadowBlur  = 28;
+      // wide glow
+      const glowGrad = ctx.createLinearGradient(tailX, 0, headX + 10, 0);
+      glowGrad.addColorStop(0,   'rgba(40,180,255,0.0)');
+      glowGrad.addColorStop(0.15,'rgba(40,180,255,0.55)');
+      glowGrad.addColorStop(1,   'rgba(180,240,255,0.35)');
+      ctx.fillStyle = glowGrad;
+      ctx.fillRect(tailX, b.yCenter - halfH, headX - tailX + 10, b.height);
+      // bright core
+      const coreGrad = ctx.createLinearGradient(tailX, 0, headX + 10, 0);
+      coreGrad.addColorStop(0, 'rgba(200,240,255,0.0)');
+      coreGrad.addColorStop(0.2,'rgba(255,255,255,0.95)');
+      coreGrad.addColorStop(1, 'rgba(255,255,255,1.0)');
+      ctx.fillStyle = coreGrad;
+      ctx.fillRect(tailX, b.yCenter - 4, headX - tailX + 10, 8);
+      ctx.restore();
+    }
+    // ── End laser ──────────────────────────────────────────────────────────────
+
     // Cap game loop to 60 fps so high-refresh-rate mobile (120Hz) runs at same speed as PC
     const TARGET_FRAME_MS = 1000 / 60;
     let _lastFrameTime = 0;
@@ -1324,7 +1500,7 @@
         state.input.right = true;
         e.preventDefault();
       } else if (e.code === "KeyX" && !e.repeat) {
-        fireVulcan();
+        startLaserCharge();
         e.preventDefault();
       } else if (e.code === "KeyZ" && !e.repeat) {
         dropBomb();
@@ -1344,6 +1520,8 @@
         state.input.left = false;
       } else if (e.code === "ArrowRight" || e.code === "KeyD") {
         state.input.right = false;
+      } else if (e.code === "KeyX") {
+        stopLaserCharge();
       }
     });
 
@@ -1392,7 +1570,16 @@
       window.addEventListener('mouseup',    release, { passive: true });
     }
 
-    makeTapButton(touchFire, () => fireVulcan());
+    // X button: short tap = vulcan, hold 3s = laser beam
+    if (touchFire) {
+      const firePress   = (e) => { e.preventDefault(); startLaserCharge(); touchFire.classList.add('active'); };
+      const fireRelease = ()  => { stopLaserCharge();  touchFire.classList.remove('active'); };
+      touchFire.addEventListener('touchstart',  firePress,   { passive: false });
+      touchFire.addEventListener('touchend',    fireRelease, { passive: true });
+      touchFire.addEventListener('touchcancel', fireRelease, { passive: true });
+      touchFire.addEventListener('mousedown',   firePress,   { passive: false });
+      window.addEventListener('mouseup',        fireRelease, { passive: true });
+    }
     makeTapButton(touchBomb, () => dropBomb());
 
     if ("ontouchstart" in window || navigator.maxTouchPoints > 0) {
