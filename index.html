@@ -840,20 +840,19 @@
     // return arena parameters based on stage (difficulty scales with stage)
     function getArenaParams(stage) {
       const s = Math.max(1, stage);
-      // lower interval = more frequent waves; higher sideSpawnChance = more bullets per wave
-      const spawnInterval = Math.max(25, 65 - (s - 1) * 6);
-      const sideSpawnChance = Math.min(0.98, 0.80 + (s - 1) * 0.04);
-      const baseMult = 5 + (s - 1) * 0.3;
-      return { spawnInterval, sideSpawnChance, baseMult };
+      // stage 1 = 66 frames between waves (~1.1s); each stage -5 frames; floor 20
+      const spawnInterval = Math.max(20, 66 - (s - 1) * 5);
+      // fixed speed in px/frame: stage 1 = 1.8, each stage +0.4
+      const bulletSpeed = 1.8 + (s - 1) * 0.4;
+      return { spawnInterval, bulletSpeed };
     }
     function spawnArenaBullets() {
       const shipX = state.ship.x;
       const shipY = state.ship.y;
-      const refSpeed = Math.max(1, Math.hypot(state.ship.vx, state.ship.vy));
-        const params = getArenaParams(state.stage);
-        const baseMult = params.baseMult;
-        const sideSpawnChance = params.sideSpawnChance;
+      const params = getArenaParams(state.stage);
+      const speed = params.bulletSpeed; // fixed speed, independent of ship velocity
       const margin = 12;
+      // all 4 sides always fire
       const positions = [
         { x: -margin, y: Math.random() * canvas.height },
         { x: canvas.width + margin, y: Math.random() * canvas.height },
@@ -861,8 +860,6 @@
         { x: Math.random() * canvas.width, y: canvas.height + margin }
       ];
       for (const p of positions) {
-        if (Math.random() > sideSpawnChance) continue;
-        const speed = refSpeed * baseMult;
         const dx = shipX - p.x;
         const dy = shipY - p.y;
         const len = Math.hypot(dx, dy) || 1;
@@ -1301,10 +1298,16 @@
       state.arena.spawnTimer = 0;
     }
 
-    function loop() {
+    // Cap game loop to 60 fps so high-refresh-rate mobile (120Hz) runs at same speed as PC
+    const TARGET_FRAME_MS = 1000 / 60;
+    let _lastFrameTime = 0;
+    function loop(timestamp) {
+      requestAnimationFrame(loop);
+      const elapsed = timestamp - _lastFrameTime;
+      if (elapsed < TARGET_FRAME_MS) return; // skip frame if too soon
+      _lastFrameTime = timestamp - (elapsed % TARGET_FRAME_MS);
       update();
       render();
-      requestAnimationFrame(loop);
     }
 
     window.addEventListener("keydown", (e) => {
@@ -1320,10 +1323,10 @@
       } else if (e.code === "ArrowRight" || e.code === "KeyD") {
         state.input.right = true;
         e.preventDefault();
-      } else if (e.code === "KeyX") {
+      } else if (e.code === "KeyX" && !e.repeat) {
         fireVulcan();
         e.preventDefault();
-      } else if (e.code === "KeyZ") {
+      } else if (e.code === "KeyZ" && !e.repeat) {
         dropBomb();
         e.preventDefault();
       } else if (e.code === "Space" && !state.running) {
@@ -1377,10 +1380,10 @@
     bindTouchControl(touchRight, "right");
     bindTouchControl(touchDown, "down");
 
-    // Fire and Bomb buttons: tap only (no repeat)
-    function makeRepeatButton(button, action) {
+    // Fire and Bomb buttons: single tap only, no repeat
+    function makeTapButton(button, action) {
       if (!button) return;
-      const press = (e) => { e.preventDefault(); action(); button.classList.add('active'); };
+      const press   = (e) => { e.preventDefault(); action(); button.classList.add('active'); };
       const release = () => button.classList.remove('active');
       button.addEventListener('touchstart', press,   { passive: false });
       button.addEventListener('touchend',   release, { passive: true });
@@ -1389,8 +1392,8 @@
       window.addEventListener('mouseup',    release, { passive: true });
     }
 
-    makeRepeatButton(touchFire, () => fireVulcan());
-    makeRepeatButton(touchBomb, () => dropBomb());
+    makeTapButton(touchFire, () => fireVulcan());
+    makeTapButton(touchBomb, () => dropBomb());
 
     if ("ontouchstart" in window || navigator.maxTouchPoints > 0) {
       touchPad.style.display = "grid";
