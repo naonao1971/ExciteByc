@@ -72,10 +72,14 @@
       padding: 8px 14px;
       font-size: 14px;
     }
+    /* sits in the empty center cell of the 3x3 touch d-pad grid */
     .gyro-toggle {
-      left: 260px;
+      grid-column: 2;
+      grid-row: 2;
       border-color: #3f8b6c;
       background: linear-gradient(180deg, #17604c, #0f362c);
+      font-size: 20px;
+      padding: 0;
     }
     .status {
       min-height: 1.4em;
@@ -342,14 +346,16 @@
     startButton.textContent = "スタート";
     document.querySelector(".wrap").appendChild(startButton);
 
-    // switches between gyro tilt control and key/touch control, without re-prompting for permission
+    // switches between gyro tilt control and key/touch control, without re-prompting for permission.
+    // sits in the empty center cell of the d-pad grid, icon-only so it doesn't crowd the controller.
     const gyroToggleButton = document.createElement("button");
     gyroToggleButton.id = "gyroToggleButton";
     gyroToggleButton.type = "button";
-    gyroToggleButton.className = "start hud-start gyro-toggle";
-    gyroToggleButton.textContent = "📱 傾き操作へ";
+    gyroToggleButton.className = "touch-btn gyro-toggle";
+    gyroToggleButton.textContent = "📱";
+    gyroToggleButton.setAttribute("aria-label", "傾き操作とキー/タッチ操作を切り替え");
     gyroToggleButton.style.display = "none"; // only shown once we know the device might support it
-    document.querySelector(".wrap").appendChild(gyroToggleButton);
+    touchPad.appendChild(gyroToggleButton);
 
     // pilot portrait sprite sheet: 5 expressions (①通常 ②被弾 ③怒り ④苦痛 ⑤決意), drawn onto the game canvas
     const pilotImg = new Image();
