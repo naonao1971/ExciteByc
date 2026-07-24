@@ -220,6 +220,10 @@
       return { x: s.x, y: s.y + (s.h - h) / 2, w: s.w, h };
     });
 
+    // victory illustration shown on the CLEAR screen
+    const clearImg = new Image();
+    clearImg.src = "image02png.png";
+
     const state = {
       running: true,
       // becomes true once the player presses スタート; gates update() so nothing moves before that
@@ -1512,17 +1516,35 @@
       }
 
       if (state.cleared) {
-        ctx.fillStyle = "rgba(6, 20, 16, 0.6)";
+        ctx.fillStyle = "rgba(6, 20, 16, 0.75)";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        let textTop = canvas.height / 2 - 30;
+        if (clearImg.complete && clearImg.naturalWidth) {
+          const imgW = 560;
+          const imgH = imgW * (clearImg.naturalHeight / clearImg.naturalWidth);
+          const imgX = (canvas.width - imgW) / 2;
+          const imgY = 20;
+          ctx.save();
+          ctx.shadowColor = "rgba(0,0,0,0.5)";
+          ctx.shadowBlur = 20;
+          ctx.drawImage(clearImg, imgX, imgY, imgW, imgH);
+          ctx.restore();
+          ctx.strokeStyle = "#bffcd6";
+          ctx.lineWidth = 1;
+          ctx.strokeRect(imgX + 0.5, imgY + 0.5, imgW - 1, imgH - 1);
+          textTop = imgY + imgH + 40;
+        }
+
         ctx.fillStyle = "#bffcd6";
         ctx.textAlign = "center";
-        ctx.font = "bold 54px ui-sans-serif, system-ui";
-        ctx.fillText("CLEAR", canvas.width / 2, canvas.height / 2 - 30);
-        ctx.font = "bold 26px ui-sans-serif, system-ui";
+        ctx.font = "bold 44px ui-sans-serif, system-ui";
+        ctx.fillText("CLEAR", canvas.width / 2, textTop);
+        ctx.font = "bold 24px ui-sans-serif, system-ui";
         ctx.fillStyle = "#ffffff";
-        ctx.fillText(`SCORE ${Math.floor(state.score)}`, canvas.width / 2, canvas.height / 2 + 14);
-        ctx.font = "20px ui-sans-serif, system-ui";
-        ctx.fillText("Space で再スタート", canvas.width / 2, canvas.height / 2 + 54);
+        ctx.fillText(`SCORE ${Math.floor(state.score)}`, canvas.width / 2, textTop + 34);
+        ctx.font = "18px ui-sans-serif, system-ui";
+        ctx.fillText("Space で再スタート", canvas.width / 2, textTop + 64);
         ctx.textAlign = "left";
       }
 
