@@ -103,11 +103,13 @@
       grid-row: 3;
     }
     .fire-pad {
-      position: relative;
-      z-index: 1;
+      /* pin fire/bomb buttons to the left-bottom of the viewport */
+      position: fixed;
+      left: 18px;
+      bottom: 18px;
+      z-index: 6;
       display: none;
       pointer-events: auto;
-      display: flex;
       flex-direction: column;
       gap: 8px;
     }
@@ -151,15 +153,6 @@
       gap: 14px;
       align-items: flex-end;
       pointer-events: none;
-    }
-    .fire-pad {
-      /* pin fire/bomb buttons to the left-bottom of the viewport */
-      position: fixed;
-      left: 18px;
-      bottom: 18px;
-      transform: none;
-      z-index: 6;
-      pointer-events: auto;
     }
     .controls-bottom > * {
       pointer-events: auto;
@@ -206,9 +199,9 @@
 
     const state = {
       running: true,
+      // becomes true once the player presses スタート; gates update() so nothing moves before that
+      started: false,
       score: 0,
-      // when true, control buttons cannot be moved (locked after start)
-      controlsLocked: false,
       speed: 2.6,
       maxSpeed: 6.2,
       bullets: [],
@@ -328,8 +321,6 @@
       state.captionTimer = 0;
       state.pendingStageAdvance = false;
       state.gameOver = false;
-      // allow moving controls until the player actually starts
-      state.controlsLocked = false;
       state.megaHp = null;
       state.megaHpSpawned = false;
       state.stageIntro = { active: false, frames: 0, total: 0, startGap: 0 };
@@ -348,11 +339,10 @@
 
     function startGame() {
       resetGame();
+      state.started = true;
       updateGyroStatus("開始しました。右下コントローラーで操作できます");
       // begin stage with wide intro
       beginStage();
-      // lock control positions once the stage has started
-      state.controlsLocked = true;
     }
 
     function updateGyroStatus(message) {
@@ -481,16 +471,6 @@
       state.ship.y += state.ship.vy;
       state.ship.x = Math.max(state.ship.radius + 8, Math.min(canvas.width - state.ship.radius - 8, state.ship.x));
       state.ship.y = Math.max(state.ship.radius, Math.min(canvas.height - state.ship.radius, state.ship.y));
-    }
-
-    function checkCollision() {
-      const x = Math.floor(state.ship.x);
-      const column = state.columns[x];
-      if (!column) return false;
-      return (
-        state.ship.y - state.ship.radius < column.top ||
-        state.ship.y + state.ship.radius > column.bottom
-      );
     }
 
     // returns penetration amount in pixels (0 if no collision)
@@ -1482,7 +1462,7 @@
       const elapsed = timestamp - _lastFrameTime;
       if (elapsed < TARGET_FRAME_MS) return; // skip frame if too soon
       _lastFrameTime = timestamp - (elapsed % TARGET_FRAME_MS);
-      update();
+      if (state.started) update();
       render();
     }
 
@@ -1506,7 +1486,7 @@
         dropBomb();
         e.preventDefault();
       } else if (e.code === "Space" && !state.running) {
-        resetGame();
+        startGame();
         e.preventDefault();
       }
     });
@@ -1589,6 +1569,9 @@
     } else {
       updateGyroStatus("PCはキーボード、スマホは右下コントローラーで移動と発射ができます");
     }
+
+    // populate an idle scene (columns/ship/stars) before the player presses スタート
+    resetGame();
     loop();
   </script>
 </body>
