@@ -251,7 +251,10 @@
       // spawnInterval: larger => fewer waves (frames)
       arena: { bullets: [], spawnTimer: 0, spawnInterval: 60 },
       // laser beam: hold X for 3s to charge, then fire
-      laser: { charging: false, chargeFrames: 0, chargeDuration: 180, beam: null }
+      laser: { charging: false, chargeFrames: 0, chargeDuration: 180, beam: null },
+      // part 3: vertical fall through the floor after the arena chamber
+      fall: { active: false, timer: 0, duration: 30 * 60, rows: [] },
+      cleared: false
     };
 
     const tunnel = {
@@ -262,6 +265,15 @@
       maxGap: 220,
       roughness: 0.42,
       baseSpawnChance: 0.0014
+    };
+
+    const fallTunnel = {
+      center: canvas.width / 2,
+      centerVel: 0,
+      gap: 170,
+      minGap: 96,
+      maxGap: 220,
+      roughness: 0.42
     };
 
     const baseColors = ["red", "blue", "yellow"];
@@ -293,6 +305,77 @@
         top: Math.max(20, center - half),
         bottom: Math.min(canvas.height - 20, center + half)
       };
+    }
+
+    // --- part 3: vertical fall shaft (rows indexed by y, walls on left/right) ---
+    function seedFallRows() {
+      state.fall.rows.length = 0;
+      for (let y = 0; y < canvas.height; y++) {
+        state.fall.rows.push(makeFallRow(fallTunnel.center, fallTunnel.gap));
+      }
+    }
+
+    function makeFallRow(center, gap) {
+      const half = gap * 0.5;
+      return {
+        left: Math.max(20, center - half),
+        right: Math.min(canvas.width - 20, center + half)
+      };
+    }
+
+    function updateFallTunnel() {
+      const drift = (Math.random() - 0.5) * fallTunnel.roughness;
+      fallTunnel.centerVel += drift;
+      fallTunnel.centerVel *= 0.96;
+      fallTunnel.center += fallTunnel.centerVel;
+      fallTunnel.center = Math.max(90, Math.min(canvas.width - 90, fallTunnel.center));
+
+      const wave = Math.sin(state.frame * 0.012) * 22;
+      const gapTarget = 145 + wave;
+      fallTunnel.gap += (gapTarget - fallTunnel.gap) * 0.03;
+      fallTunnel.gap = Math.max(fallTunnel.minGap, Math.min(fallTunnel.maxGap, fallTunnel.gap));
+    }
+
+    function updateFallRows() {
+      const step = state.scrollSpeed;
+      for (let i = 0; i < step; i++) {
+        state.fall.rows.shift();
+        updateFallTunnel();
+        state.fall.rows.push(makeFallRow(fallTunnel.center, fallTunnel.gap));
+      }
+    }
+
+    // returns penetration amount in pixels for the fall shaft (0 if no collision)
+    function getFallPenetration() {
+      const y = Math.floor(state.ship.y);
+      const row = state.fall.rows[y];
+      if (!row) return 0;
+      if (state.ship.x - state.ship.radius < row.left) {
+        return row.left - (state.ship.x - state.ship.radius);
+      }
+      if (state.ship.x + state.ship.radius > row.right) {
+        return (state.ship.x + state.ship.radius) - row.right;
+      }
+      return 0;
+    }
+
+    function beginFall() {
+      state.fall.active = true;
+      state.fall.timer = 0;
+      fallTunnel.center = canvas.width / 2;
+      fallTunnel.centerVel = 0;
+      fallTunnel.gap = 220;
+      seedFallRows();
+      state.ship.x = canvas.width / 2;
+      state.ship.y = 70;
+      state.ship.vx = 0;
+      state.ship.vy = 0;
+      state.arena.bullets.length = 0;
+      state.arena.spawnTimer = 0;
+      state.stageIntro.active = false;
+      state.hpItems.length = 0;
+      state.megaHp = null;
+      showCaption("床が開いた……地底へ落下！", 150);
     }
 
     function resetGame() {
@@ -330,6 +413,10 @@
       state.laser.charging = false;
       state.laser.chargeFrames = 0;
       state.laser.beam = null;
+      state.fall.active = false;
+      state.fall.timer = 0;
+      state.fall.rows.length = 0;
+      state.cleared = false;
 
       tunnel.center = canvas.height / 2;
       tunnel.centerVel = 0;
@@ -941,17 +1028,53 @@
         if (state.goalHold.frames <= 0) {
           state.goalHold.active = false;
           state.pendingStageAdvance = false;
-          state.stage += 1;
-          state.stageTimer = 0;
-          // reset mega HP for new stage
-          state.megaHp = null;
-          state.megaHpSpawned = false;
-          // begin next stage with wide intro
-          beginStage();
-          // reset arena bullets
-          state.arena.bullets.length = 0;
-          state.arena.spawnTimer = 0;
+          // part 2 (arena dodge) cleared — the floor opens, begin the part 3 fall
+          beginFall();
         }
+      }
+
+      // part 3: vertical fall through the shaft, separate from the tunnel/arena flow above
+      if (state.fall.active) {
+        if (!state.running) return;
+        state.fall.timer++;
+        state.scrollSpeed = state.speed;
+        updateStars();
+        updateFallRows();
+        updateArenaBullets();
+        updateShip();
+        updateBullets();
+        updateBombs();
+        updateExplosions();
+        updateLaser();
+        state.displayScore += (state.score - state.displayScore) * 0.18;
+
+        const penetration = getFallPenetration();
+        const CONTACT_FRAMES_THRESHOLD = Math.max(1, Math.round(0.1 * 60));
+        if (penetration > 0) {
+          state.ship.contactFrames++;
+          if (state.ship.contactFrames >= CONTACT_FRAMES_THRESHOLD) {
+            state.ship.contactFrames = 0;
+            if (!tryUseLaserShield()) {
+              releaseLaserChargeOnHit();
+              state.ship.hp = Math.max(0, state.ship.hp - 5);
+              if (state.ship.hp <= 0) {
+                createExplosion(state.ship.x, state.ship.y, "red");
+                state.running = false;
+                state.gameOver = true;
+              }
+            }
+          }
+        } else {
+          state.ship.contactFrames = 0;
+          state.score += 1;
+        }
+
+        if (state.fall.timer >= state.fall.duration) {
+          state.fall.active = false;
+          state.running = false;
+          state.cleared = true;
+        }
+        return;
       }
 
       if (!state.running) return;
@@ -1092,6 +1215,23 @@
       }
     }
 
+    // part 3: vertical fall shaft — walls on left/right, rows indexed by y
+    function drawFallTunnel() {
+      ctx.fillStyle = "#2a1f45";
+      for (let y = 0; y < state.fall.rows.length; y++) {
+        const r = state.fall.rows[y];
+        ctx.fillRect(0, y, r.left, 1);
+        ctx.fillRect(r.right, y, canvas.width - r.right, 1);
+      }
+
+      ctx.fillStyle = "#b085ff";
+      for (let y = 0; y < state.fall.rows.length; y += 3) {
+        const r = state.fall.rows[y];
+        ctx.fillRect(r.left - 2, y, 2, 2);
+        ctx.fillRect(r.right, y, 2, 2);
+      }
+    }
+
     function drawShip() {
       const { x, y, radius } = state.ship;
       ctx.save();
@@ -1176,8 +1316,12 @@
       ctx.fillText(`SCORE ${Math.floor(state.displayScore)}`, 20, 32);
       ctx.fillText(`SPD ${state.scrollSpeed.toFixed(2)}`, 20, 58);
 
-      // remaining time for current stage
-      if (state.running) {
+      // remaining time for current stage / fall
+      if (state.running && state.fall.active) {
+        const remainingFrames = Math.max(0, state.fall.duration - state.fall.timer);
+        const remainingSecs = Math.ceil(remainingFrames / 60);
+        ctx.fillText(`DIVE ${remainingSecs}s`, 20, 84);
+      } else if (state.running) {
         const stageSecs = state.stageDuration + (state.stage - 1) * 10;
         const stageFrames = Math.round(stageSecs * 60);
         const remainingFrames = Math.max(0, stageFrames - state.stageTimer);
@@ -1224,16 +1368,31 @@
         ctx.textAlign = "left";
       }
 
-      // arena countdown display (during stage intro countdown)
+      if (state.cleared) {
+        ctx.fillStyle = "rgba(6, 20, 16, 0.6)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#bffcd6";
+        ctx.textAlign = "center";
+        ctx.font = "bold 54px ui-sans-serif, system-ui";
+        ctx.fillText("CLEAR", canvas.width / 2, canvas.height / 2 - 30);
+        ctx.font = "bold 26px ui-sans-serif, system-ui";
+        ctx.fillStyle = "#ffffff";
+        ctx.fillText(`SCORE ${Math.floor(state.score)}`, canvas.width / 2, canvas.height / 2 + 14);
+        ctx.font = "20px ui-sans-serif, system-ui";
+        ctx.fillText("Space で再スタート", canvas.width / 2, canvas.height / 2 + 54);
+        ctx.textAlign = "left";
+      }
+
+      // arena countdown display (during stage intro countdown, before the floor opens)
       if (state.stageIntro && state.stageIntro.active && state.stageIntro.phase === 'countdown') {
         const remaining = Math.ceil(state.stageIntro.frames / 60);
         ctx.save();
         ctx.fillStyle = "rgba(0,0,0,0.6)";
-        ctx.fillRect(canvas.width / 2 - 120, 16, 240, 46);
+        ctx.fillRect(canvas.width / 2 - 140, 16, 280, 46);
         ctx.fillStyle = "#fff6c8";
         ctx.textAlign = "center";
         ctx.font = "bold 24px ui-sans-serif, system-ui";
-        ctx.fillText(`NEXT STAGE IN ${remaining}s`, canvas.width / 2, 16 + 32);
+        ctx.fillText(`床が開くまで ${remaining}s`, canvas.width / 2, 16 + 32);
         ctx.restore();
         ctx.textAlign = "left";
       }
@@ -1254,7 +1413,11 @@
 
     function render() {
       drawBackground();
-      drawTunnel();
+      if (state.fall.active) {
+        drawFallTunnel();
+      } else {
+        drawTunnel();
+      }
       drawMegaHp();
       drawArenaBullets();
       drawHpItems();
