@@ -72,6 +72,11 @@
       padding: 8px 14px;
       font-size: 14px;
     }
+    .gyro-toggle {
+      left: 260px;
+      border-color: #3f8b6c;
+      background: linear-gradient(180deg, #17604c, #0f362c);
+    }
     .status {
       min-height: 1.4em;
       color: #b9c8ff;
@@ -193,11 +198,15 @@
     // gyro tilt controls: when available, replace the on-screen d-pad with device tilt.
     // baseline is calibrated to however the phone is being held right when the game starts.
     const gyro = {
-      supported: false,
-      active: false,
+      supported: false,   // real orientation data has been observed at least once
+      listening: false,   // the deviceorientation listener has been attached (permission granted)
+      active: false,      // currently driving ship movement (toggle-able)
       calibrated: false,
       baseline: { x: 0, y: 0 },
-      deadzone: 6
+      deadzoneDeg: 4,     // degrees of tilt ignored around the baseline (dead zone)
+      maxDeg: 28,         // degrees of tilt for full deflection
+      sensitivity: 0.55,  // scales the analog thrust vs. a full digital key-press, for finer control
+      userChoiceMade: false // once the player uses the toggle button, スタート stops auto-switching modes
     };
 
     // current screen rotation (0/90/180/270) so tilt axes can be remapped to how the phone is actually held
@@ -212,10 +221,18 @@
     // rotates the device's raw beta/gamma into screen-relative x (left/right) and y (forward/back) tilt
     function computeScreenTilt(beta, gamma) {
       const angle = ((getScreenAngle() % 360) + 360) % 360;
-      if (angle === 90) return { x: -beta, y: gamma };
+      if (angle === 90) return { x: beta, y: -gamma };
       if (angle === 180) return { x: -gamma, y: -beta };
-      if (angle === 270) return { x: beta, y: -gamma };
+      if (angle === 270) return { x: -beta, y: gamma };
       return { x: gamma, y: beta };
+    }
+
+    // maps a tilt offset (in degrees) to a smooth -1..1 analog value, with a dead zone near the baseline
+    function normalizeTiltAxis(deltaDeg) {
+      const abs = Math.abs(deltaDeg);
+      if (abs <= gyro.deadzoneDeg) return 0;
+      const t = Math.min(1, (abs - gyro.deadzoneDeg) / (gyro.maxDeg - gyro.deadzoneDeg));
+      return (deltaDeg < 0 ? -1 : 1) * t;
     }
 
     function applyGyroTilt(x, y) {
@@ -225,27 +242,39 @@
         gyro.calibrated = true;
         return;
       }
-      const dx = x - gyro.baseline.x;
-      const dy = y - gyro.baseline.y;
-      state.input.right = dx > gyro.deadzone;
-      state.input.left = dx < -gyro.deadzone;
-      state.input.down = dy > gyro.deadzone;
-      state.input.up = dy < -gyro.deadzone;
+      state.input.gyroX = normalizeTiltAxis(x - gyro.baseline.x);
+      state.input.gyroY = normalizeTiltAxis(y - gyro.baseline.y);
+    }
+
+    function setTouchPadVisible(visible) {
+      if (!touchPad) return;
+      const isTouchDevice = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+      touchPad.style.display = visible && isTouchDevice ? "grid" : "none";
     }
 
     function activateGyroControls() {
-      if (gyro.active) return;
       gyro.active = true;
-      touchPad.style.display = "none";
-      updateGyroStatus("ジャイロ操作が有効です。端末を傾けて移動します（起動時の向きが基準）");
+      state.input.gyroX = 0;
+      state.input.gyroY = 0;
+      recalibrateGyro();
+      setTouchPadVisible(false);
+      updateGyroStatus("ジャイロ操作中：端末を傾けて移動します（現在の向きが基準）");
+      updateGyroToggleLabel();
+    }
+
+    function deactivateGyroControls() {
+      gyro.active = false;
+      state.input.gyroX = 0;
+      state.input.gyroY = 0;
+      setTouchPadVisible(true);
+      updateGyroStatus("キー/タッチ操作に切り替えました");
+      updateGyroToggleLabel();
     }
 
     function handleOrientation(e) {
       if (e.beta == null || e.gamma == null) return;
-      if (!gyro.supported) {
-        gyro.supported = true;
-        activateGyroControls();
-      }
+      gyro.supported = true;
+      if (!gyro.active) return;
       const tilt = computeScreenTilt(e.beta, e.gamma);
       applyGyroTilt(tilt.x, tilt.y);
     }
@@ -267,17 +296,43 @@
       return true; // no explicit permission needed (Android, older iOS)
     }
 
-    async function enableGyroIfAvailable() {
+    // requests permission (first time only) and attaches the listener; does not itself toggle control
+    async function ensureGyroListening() {
+      if (gyro.listening) return true;
       const granted = await requestGyroPermission();
-      if (!granted) return;
-      // reset the calibration baseline to how the player is holding the device right now
-      recalibrateGyro();
+      if (!granted) return false;
+      gyro.listening = true;
       window.addEventListener("deviceorientation", handleOrientation);
       // rotating the phone mid-game changes what "neutral" tilt means, so recalibrate on rotation
       window.addEventListener("orientationchange", recalibrateGyro);
       if (window.screen && window.screen.orientation) {
         window.screen.orientation.addEventListener("change", recalibrateGyro);
       }
+      return true;
+    }
+
+    async function enableGyroIfAvailable() {
+      const ok = await ensureGyroListening();
+      if (ok) activateGyroControls();
+    }
+
+    async function toggleGyroControls() {
+      gyro.userChoiceMade = true;
+      if (gyro.active) {
+        deactivateGyroControls();
+        return;
+      }
+      const ok = await ensureGyroListening();
+      if (ok) {
+        activateGyroControls();
+      } else {
+        updateGyroStatus("ジャイロを有効化できませんでした。キー/タッチで操作してください");
+      }
+    }
+
+    function updateGyroToggleLabel() {
+      if (!gyroToggleButton) return;
+      gyroToggleButton.textContent = gyro.active ? "🕹️ キー操作へ" : "📱 傾き操作へ";
     }
 
     const startButton = document.createElement("button");
@@ -286,6 +341,15 @@
     startButton.className = "start hud-start";
     startButton.textContent = "スタート";
     document.querySelector(".wrap").appendChild(startButton);
+
+    // switches between gyro tilt control and key/touch control, without re-prompting for permission
+    const gyroToggleButton = document.createElement("button");
+    gyroToggleButton.id = "gyroToggleButton";
+    gyroToggleButton.type = "button";
+    gyroToggleButton.className = "start hud-start gyro-toggle";
+    gyroToggleButton.textContent = "📱 傾き操作へ";
+    gyroToggleButton.style.display = "none"; // only shown once we know the device might support it
+    document.querySelector(".wrap").appendChild(gyroToggleButton);
 
     // pilot portrait sprite sheet: 5 expressions (①通常 ②被弾 ③怒り ④苦痛 ⑤決意), drawn onto the game canvas
     const pilotImg = new Image();
@@ -345,7 +409,8 @@
       // single mega HP per stage
       megaHp: null,
       megaHpSpawned: false,
-      input: { up: false, down: false, left: false, right: false },
+      // up/down/left/right: digital (keyboard/touch). gyroX/gyroY: analog -1..1 (device tilt)
+      input: { up: false, down: false, left: false, right: false, gyroX: 0, gyroY: 0 },
       effects: {
         slowTimer: 0,
         wideTimer: 0
@@ -564,6 +629,8 @@
       state.fall.landing.progress = 0;
       state.cleared = false;
       state.portrait.hitTimer = 0;
+      state.input.gyroX = 0;
+      state.input.gyroY = 0;
 
       tunnel.center = canvas.height / 2;
       tunnel.centerVel = 0;
@@ -699,6 +766,9 @@
       if (state.input.down) state.ship.vy += verticalThrust;
       if (state.input.left) state.ship.vx -= horizontalThrust;
       if (state.input.right) state.ship.vx += horizontalThrust;
+      // gyro tilt: proportional (analog) thrust instead of full digital thrust, for finer control
+      state.ship.vx += horizontalThrust * gyro.sensitivity * state.input.gyroX;
+      state.ship.vy += verticalThrust * gyro.sensitivity * state.input.gyroY;
       state.ship.vx *= drag;
       state.ship.vy *= drag;
       state.ship.x += state.ship.vx;
@@ -1974,9 +2044,16 @@
     // restart button removed for mobile UI; use in-game controls to restart
 
     startButton.addEventListener("click", async () => {
-      await enableGyroIfAvailable();
+      // first start: try to enable gyro automatically. after that, respect the toggle button's choice.
+      if (!gyro.userChoiceMade) {
+        await enableGyroIfAvailable();
+      } else if (gyro.active) {
+        recalibrateGyro();
+      }
       startGame();
     });
+
+    gyroToggleButton.addEventListener("click", toggleGyroControls);
 
     function setTouchControl(button, actionKey, enabled) {
       state.input[actionKey] = enabled;
@@ -2036,6 +2113,8 @@
       touchPad.style.display = "grid";
       firePad.style.display = "block";
       if (window.DeviceOrientationEvent) {
+        gyroToggleButton.style.display = "inline-block";
+        updateGyroToggleLabel();
         updateGyroStatus("スタートを押すと、対応端末では傾き操作に切り替わります（右のXでバルカン発射）");
       } else {
         updateGyroStatus("iPhoneは右下の十字キーで移動、右のXでバルカン発射できます");
