@@ -253,7 +253,18 @@
       // laser beam: hold X for 3s to charge, then fire
       laser: { charging: false, chargeFrames: 0, chargeDuration: 180, beam: null },
       // part 3: vertical fall through the floor after the arena chamber
-      fall: { active: false, timer: 0, duration: 30 * 60, rows: [] },
+      fall: {
+        active: false,
+        timer: 0,
+        duration: 30 * 60,
+        rows: [],
+        // intro: bullets stop, floor door slides open, ship rotates 90° before the descent begins
+        introActive: false,
+        introTimer: 0,
+        introDuration: 120,
+        doorProgress: 0,
+        shipAngle: 0
+      },
       cleared: false
     };
 
@@ -362,14 +373,21 @@
     function beginFall() {
       state.fall.active = true;
       state.fall.timer = 0;
+      // intro: bullets already stopped, door slides open, ship rotates 90° before descent
+      state.fall.introActive = true;
+      state.fall.introTimer = 0;
+      state.fall.doorProgress = 0;
+      state.fall.shipAngle = 0;
       fallTunnel.center = canvas.width / 2;
       fallTunnel.centerVel = 0;
       fallTunnel.gap = 220;
       seedFallRows();
       state.ship.x = canvas.width / 2;
-      state.ship.y = 70;
+      state.ship.y = canvas.height / 2;
       state.ship.vx = 0;
       state.ship.vy = 0;
+      state.bullets.length = 0;
+      state.bombs.length = 0;
       state.arena.bullets.length = 0;
       state.arena.spawnTimer = 0;
       state.stageIntro.active = false;
@@ -416,6 +434,10 @@
       state.fall.active = false;
       state.fall.timer = 0;
       state.fall.rows.length = 0;
+      state.fall.introActive = false;
+      state.fall.introTimer = 0;
+      state.fall.doorProgress = 0;
+      state.fall.shipAngle = 0;
       state.cleared = false;
 
       tunnel.center = canvas.height / 2;
@@ -1036,8 +1058,28 @@
       // part 3: vertical fall through the shaft, separate from the tunnel/arena flow above
       if (state.fall.active) {
         if (!state.running) return;
+
+        // intro: bullets already stopped, floor door slides open, ship rotates 90°
+        if (state.fall.introActive) {
+          state.fall.introTimer++;
+          const p = Math.min(1, state.fall.introTimer / state.fall.introDuration);
+          state.fall.doorProgress = p;
+          state.fall.shipAngle = p * (Math.PI / 2);
+          state.scrollSpeed = 0;
+          updateStars();
+          updateExplosions();
+          updateLaser();
+          state.displayScore += (state.score - state.displayScore) * 0.18;
+          if (p >= 1) {
+            state.fall.introActive = false;
+            state.fall.timer = 0;
+          }
+          return;
+        }
+
         state.fall.timer++;
-        state.scrollSpeed = state.speed;
+        // fall scroll speed is ~30% slower than the normal forward speed
+        state.scrollSpeed = state.speed * 0.7;
         updateStars();
         updateFallRows();
         updateArenaBullets();
@@ -1232,11 +1274,36 @@
       }
     }
 
+    // floor door sliding open before the fall begins (0 = closed, 1 = fully open)
+    function drawFallDoor(progress) {
+      const halfW = canvas.width / 2;
+      const panelW = halfW * (1 - progress);
+      if (panelW <= 0) return;
+
+      const panelGradient = (x0) => {
+        const g = ctx.createLinearGradient(x0, 0, x0, canvas.height);
+        g.addColorStop(0, "#2a3357");
+        g.addColorStop(0.5, "#1b2340");
+        g.addColorStop(1, "#2a3357");
+        return g;
+      };
+
+      ctx.fillStyle = panelGradient(0);
+      ctx.fillRect(0, 0, panelW, canvas.height);
+      ctx.fillStyle = panelGradient(canvas.width - panelW);
+      ctx.fillRect(canvas.width - panelW, 0, panelW, canvas.height);
+
+      // glowing seam at each door's leading edge
+      ctx.fillStyle = "rgba(140,190,255,0.65)";
+      ctx.fillRect(panelW - 2, 0, 4, canvas.height);
+      ctx.fillRect(canvas.width - panelW - 2, 0, 4, canvas.height);
+    }
+
     function drawShip() {
       const { x, y, radius } = state.ship;
       ctx.save();
       ctx.translate(x, y);
-      ctx.rotate(state.ship.vy * 0.05);
+      ctx.rotate(state.ship.vy * 0.05 + (state.fall.shipAngle || 0));
 
       ctx.fillStyle = "#ffd966";
       ctx.beginPath();
@@ -1413,7 +1480,10 @@
 
     function render() {
       drawBackground();
-      if (state.fall.active) {
+      if (state.fall.active && state.fall.introActive) {
+        drawTunnel();
+        drawFallDoor(state.fall.doorProgress);
+      } else if (state.fall.active) {
         drawFallTunnel();
       } else {
         drawTunnel();
