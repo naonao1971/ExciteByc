@@ -72,6 +72,18 @@
       padding: 8px 14px;
       font-size: 14px;
     }
+    .pilot-portrait {
+      position: absolute;
+      top: 8px;
+      left: 260px;
+      z-index: 2;
+      height: 44px;
+      width: 44px;
+      object-fit: cover;
+      border-radius: 8px;
+      border: 1px solid #4d5f95;
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+    }
     .status {
       min-height: 1.4em;
       color: #b9c8ff;
@@ -196,6 +208,13 @@
     startButton.className = "start hud-start";
     startButton.textContent = "スタート";
     document.querySelector(".wrap").appendChild(startButton);
+
+    const pilotPortrait = document.createElement("img");
+    pilotPortrait.id = "pilotPortrait";
+    pilotPortrait.className = "pilot-portrait";
+    pilotPortrait.src = "image01.jpg";
+    pilotPortrait.alt = "コクピットに乗るパイロット";
+    document.querySelector(".wrap").appendChild(pilotPortrait);
 
     const state = {
       running: true,
