@@ -263,7 +263,9 @@
         introTimer: 0,
         introDuration: 120,
         doorProgress: 0,
-        shipAngle: 0
+        shipAngle: 0,
+        // landing: auto-fly to the floor once the descent timer ends, then CLEAR
+        landing: { active: false, timer: 0, duration: 90, progress: 0 }
       },
       cleared: false
     };
@@ -271,9 +273,9 @@
     const tunnel = {
       center: canvas.height / 2,
       centerVel: 0,
-      gap: 170,
-      minGap: 96,
-      maxGap: 220,
+      gap: 200,
+      minGap: 120,
+      maxGap: 260,
       roughness: 0.42,
       baseSpawnChance: 0.0014
     };
@@ -281,9 +283,9 @@
     const fallTunnel = {
       center: canvas.width / 2,
       centerVel: 0,
-      gap: 170,
-      minGap: 96,
-      maxGap: 220,
+      gap: 200,
+      minGap: 120,
+      maxGap: 260,
       roughness: 0.42
     };
 
@@ -342,7 +344,7 @@
       fallTunnel.center = Math.max(90, Math.min(canvas.width - 90, fallTunnel.center));
 
       const wave = Math.sin(state.frame * 0.012) * 22;
-      const gapTarget = 145 + wave;
+      const gapTarget = 190 + wave;
       fallTunnel.gap += (gapTarget - fallTunnel.gap) * 0.03;
       fallTunnel.gap = Math.max(fallTunnel.minGap, Math.min(fallTunnel.maxGap, fallTunnel.gap));
     }
@@ -438,11 +440,14 @@
       state.fall.introTimer = 0;
       state.fall.doorProgress = 0;
       state.fall.shipAngle = 0;
+      state.fall.landing.active = false;
+      state.fall.landing.timer = 0;
+      state.fall.landing.progress = 0;
       state.cleared = false;
 
       tunnel.center = canvas.height / 2;
       tunnel.centerVel = 0;
-      tunnel.gap = 170;
+      tunnel.gap = 200;
       seedColumns();
     }
 
@@ -551,7 +556,7 @@
 
       const wave = Math.sin(state.frame * 0.012) * 22;
       const wideBonus = state.effects.wideTimer > 0 ? 24 : 0;
-      const gapTarget = 145 + wave - Math.min(38, state.speed * 7) + wideBonus;
+      const gapTarget = 190 + wave - Math.min(38, state.speed * 7) + wideBonus;
       tunnel.gap += (gapTarget - tunnel.gap) * 0.03;
       tunnel.gap = Math.max(tunnel.minGap, Math.min(tunnel.maxGap, tunnel.gap));
     }
@@ -1064,7 +1069,8 @@
           state.fall.introTimer++;
           const p = Math.min(1, state.fall.introTimer / state.fall.introDuration);
           state.fall.doorProgress = p;
-          state.fall.shipAngle = p * (Math.PI / 2);
+          // rotate nose-up (negative = counter-clockwise in canvas' y-down space)
+          state.fall.shipAngle = p * (-Math.PI / 2);
           state.scrollSpeed = 0;
           updateStars();
           updateExplosions();
@@ -1077,9 +1083,35 @@
           return;
         }
 
+        // landing: auto-fly to the floor and settle down, then show CLEAR
+        if (state.fall.landing.active) {
+          state.fall.landing.timer++;
+          const p = Math.min(1, state.fall.landing.timer / state.fall.landing.duration);
+          state.fall.landing.progress = p;
+          const targetX = canvas.width / 2;
+          const targetY = canvas.height - 70;
+          state.ship.x += (targetX - state.ship.x) * 0.07;
+          state.ship.y += (targetY - state.ship.y) * 0.07;
+          state.ship.vx = 0;
+          state.ship.vy = 0;
+          state.scrollSpeed = 0;
+          updateStars();
+          updateExplosions();
+          state.displayScore += (state.score - state.displayScore) * 0.18;
+          if (p >= 1) {
+            state.fall.landing.active = false;
+            state.fall.active = false;
+            state.running = false;
+            state.cleared = true;
+          }
+          return;
+        }
+
         state.fall.timer++;
         // fall scroll speed is ~30% slower than the normal forward speed
         state.scrollSpeed = state.speed * 0.7;
+        // holding X flares the under-ship thruster and brakes the descent by ~10%
+        if (state.laser.charging) state.scrollSpeed *= 0.9;
         updateStars();
         updateFallRows();
         updateArenaBullets();
@@ -1112,9 +1144,8 @@
         }
 
         if (state.fall.timer >= state.fall.duration) {
-          state.fall.active = false;
-          state.running = false;
-          state.cleared = true;
+          state.fall.landing.active = true;
+          state.fall.landing.timer = 0;
         }
         return;
       }
@@ -1299,8 +1330,22 @@
       ctx.fillRect(canvas.width - panelW - 2, 0, 4, canvas.height);
     }
 
+    // ground the ship auto-lands on at the end of the fall (0 = not visible, 1 = fully risen)
+    function drawFallLanding(progress) {
+      const groundH = 70 * progress;
+      const grd = ctx.createLinearGradient(0, canvas.height - groundH, 0, canvas.height);
+      grd.addColorStop(0, "#3a2f55");
+      grd.addColorStop(1, "#150f22");
+      ctx.fillStyle = grd;
+      ctx.fillRect(0, canvas.height - groundH, canvas.width, groundH);
+      ctx.fillStyle = "rgba(180,150,255,0.55)";
+      ctx.fillRect(0, canvas.height - groundH - 2, canvas.width, 2);
+    }
+
     function drawShip() {
       const { x, y, radius } = state.ship;
+      // holding X during the fall flares the under-ship thruster to brake the descent
+      const boosting = state.fall.active && !state.fall.introActive && !state.fall.landing.active && state.laser.charging;
       ctx.save();
       ctx.translate(x, y);
       ctx.rotate(state.ship.vy * 0.05 + (state.fall.shipAngle || 0));
@@ -1320,12 +1365,13 @@
       ctx.fill();
 
       if (state.running) {
-        const flame = 8 + Math.random() * 8;
-        ctx.fillStyle = "#ff8c42";
+        const flame = (boosting ? 18 : 8) + Math.random() * (boosting ? 16 : 8);
+        const flameW = boosting ? 6 : 3;
+        ctx.fillStyle = boosting ? "#ffe27a" : "#ff8c42";
         ctx.beginPath();
         ctx.moveTo(-radius + 2, 0);
-        ctx.lineTo(-radius - flame, -3);
-        ctx.lineTo(-radius - flame, 3);
+        ctx.lineTo(-radius - flame, -flameW);
+        ctx.lineTo(-radius - flame, flameW);
         ctx.closePath();
         ctx.fill();
       }
@@ -1483,6 +1529,9 @@
       if (state.fall.active && state.fall.introActive) {
         drawTunnel();
         drawFallDoor(state.fall.doorProgress);
+      } else if (state.fall.active && state.fall.landing.active) {
+        drawFallTunnel();
+        drawFallLanding(state.fall.landing.progress);
       } else if (state.fall.active) {
         drawFallTunnel();
       } else {
