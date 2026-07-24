@@ -250,10 +250,14 @@
       state.input.gyroY = normalizeTiltAxis(y - gyro.baseline.y);
     }
 
+    // hides only the four direction buttons (not the whole grid), so the gyro
+    // toggle icon in the center cell stays visible/reachable either way
     function setTouchPadVisible(visible) {
-      if (!touchPad) return;
       const isTouchDevice = "ontouchstart" in window || navigator.maxTouchPoints > 0;
-      touchPad.style.display = visible && isTouchDevice ? "grid" : "none";
+      const display = visible && isTouchDevice ? "" : "none";
+      [touchUp, touchLeft, touchRight, touchDown].forEach((btn) => {
+        if (btn) btn.style.display = display;
+      });
     }
 
     function activateGyroControls() {
@@ -336,7 +340,12 @@
 
     function updateGyroToggleLabel() {
       if (!gyroToggleButton) return;
-      gyroToggleButton.textContent = gyro.active ? "🕹️ キー操作へ" : "📱 傾き操作へ";
+      // icon-only: 🕹️ = tap to switch to key/touch, 📱 = tap to switch to tilt
+      gyroToggleButton.textContent = gyro.active ? "🕹️" : "📱";
+      gyroToggleButton.setAttribute(
+        "aria-label",
+        gyro.active ? "キー/タッチ操作に切り替え" : "傾き操作に切り替え"
+      );
     }
 
     const startButton = document.createElement("button");
