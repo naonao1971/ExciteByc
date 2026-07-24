@@ -162,7 +162,7 @@
 <body>
   <div class="wrap">
     <canvas id="game" width="960" height="540" aria-label="Scramble tunnel game"></canvas>
-    <div id="gyroStatus" class="status" style="display:none"></div>
+    <div id="gyroStatus" class="status"></div>
     <div class="controls-bottom" aria-hidden="false">
       <div id="firePad" class="fire-pad" aria-label="発射ボタン">
         <button id="touchFire" class="touch-btn touch-fire" type="button" aria-label="バルカン発射">X</button>
@@ -189,6 +189,72 @@
     const touchBomb = document.getElementById("touchBomb");
     const touchRight = document.getElementById("touchRight");
     const touchDown = document.getElementById("touchDown");
+
+    // gyro tilt controls: when available, replace the on-screen d-pad with device tilt.
+    // baseline is calibrated to however the phone is being held right when the game starts.
+    const gyro = {
+      supported: false,
+      active: false,
+      calibrated: false,
+      baseline: { beta: 0, gamma: 0 },
+      deadzone: 6
+    };
+
+    function applyGyroTilt(beta, gamma) {
+      if (!gyro.calibrated) {
+        gyro.baseline.beta = beta;
+        gyro.baseline.gamma = gamma;
+        gyro.calibrated = true;
+        return;
+      }
+      const dBeta = beta - gyro.baseline.beta;
+      const dGamma = gamma - gyro.baseline.gamma;
+      state.input.right = dGamma > gyro.deadzone;
+      state.input.left = dGamma < -gyro.deadzone;
+      state.input.down = dBeta > gyro.deadzone;
+      state.input.up = dBeta < -gyro.deadzone;
+    }
+
+    function activateGyroControls() {
+      if (gyro.active) return;
+      gyro.active = true;
+      touchPad.style.display = "none";
+      updateGyroStatus("ジャイロ操作が有効です。端末を傾けて移動します（起動時の向きが基準）");
+    }
+
+    function handleOrientation(e) {
+      if (e.beta == null || e.gamma == null) return;
+      if (!gyro.supported) {
+        gyro.supported = true;
+        activateGyroControls();
+      }
+      applyGyroTilt(e.beta, e.gamma);
+    }
+
+    function recalibrateGyro() {
+      gyro.calibrated = false;
+    }
+
+    async function requestGyroPermission() {
+      if (typeof window.DeviceOrientationEvent === "undefined") return false;
+      if (typeof DeviceOrientationEvent.requestPermission === "function") {
+        try {
+          const result = await DeviceOrientationEvent.requestPermission();
+          return result === "granted";
+        } catch (e) {
+          return false;
+        }
+      }
+      return true; // no explicit permission needed (Android, older iOS)
+    }
+
+    async function enableGyroIfAvailable() {
+      const granted = await requestGyroPermission();
+      if (!granted) return;
+      // reset the calibration baseline to how the player is holding the device right now
+      recalibrateGyro();
+      window.addEventListener("deviceorientation", handleOrientation);
+    }
 
     const startButton = document.createElement("button");
     startButton.id = "startButton";
@@ -1861,6 +1927,7 @@
         dropBomb();
         e.preventDefault();
       } else if (e.code === "Space" && !state.running) {
+        if (gyro.active) recalibrateGyro();
         startGame();
         e.preventDefault();
       }
@@ -1882,7 +1949,10 @@
 
     // restart button removed for mobile UI; use in-game controls to restart
 
-    startButton.addEventListener("click", startGame);
+    startButton.addEventListener("click", async () => {
+      await enableGyroIfAvailable();
+      startGame();
+    });
 
     function setTouchControl(button, actionKey, enabled) {
       state.input[actionKey] = enabled;
@@ -1938,9 +2008,14 @@
     makeTapButton(touchBomb, () => dropBomb());
 
     if ("ontouchstart" in window || navigator.maxTouchPoints > 0) {
+      // shown by default; hidden automatically once real tilt events start arriving
       touchPad.style.display = "grid";
       firePad.style.display = "block";
-      updateGyroStatus("iPhone は右下の十字キーで移動、右のXでバルカン発射できます");
+      if (window.DeviceOrientationEvent) {
+        updateGyroStatus("スタートを押すと、対応端末では傾き操作に切り替わります（右のXでバルカン発射）");
+      } else {
+        updateGyroStatus("iPhoneは右下の十字キーで移動、右のXでバルカン発射できます");
+      }
     } else {
       updateGyroStatus("PCはキーボード、スマホは右下コントローラーで移動と発射ができます");
     }
