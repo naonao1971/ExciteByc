@@ -72,19 +72,6 @@
       padding: 8px 14px;
       font-size: 14px;
     }
-    .pilot-portrait {
-      position: absolute;
-      /* sits just under the HP gauge in the top-right corner */
-      top: 40px;
-      right: 20px;
-      z-index: 2;
-      width: 120px;
-      height: 90px;
-      object-fit: cover;
-      border-radius: 8px;
-      border: 1px solid #4d5f95;
-      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
-    }
     .status {
       min-height: 1.4em;
       color: #b9c8ff;
@@ -210,12 +197,28 @@
     startButton.textContent = "スタート";
     document.querySelector(".wrap").appendChild(startButton);
 
-    const pilotPortrait = document.createElement("img");
-    pilotPortrait.id = "pilotPortrait";
-    pilotPortrait.className = "pilot-portrait";
-    pilotPortrait.src = "image01.jpg";
-    pilotPortrait.alt = "コクピットに乗るパイロット";
-    document.querySelector(".wrap").appendChild(pilotPortrait);
+    // pilot portrait sprite sheet: 5 expressions (①通常 ②被弾 ③怒り ④苦痛 ⑤決意), drawn onto the game canvas
+    const pilotImg = new Image();
+    pilotImg.src = "image01.png";
+    // source slots within the sheet (row1: 3 across, row2: 2 across)
+    const PILOT_SLOTS = [
+      { x: 0, y: 0, w: 557, h: 470 },     // ① 通常(冷静)
+      { x: 557, y: 0, w: 557, h: 470 },   // ② 被弾(衝撃)
+      { x: 1114, y: 0, w: 558, h: 470 },  // ③ 怒り(戦闘モード)
+      { x: 0, y: 471, w: 836, h: 470 },   // ④ 苦痛(ダメージ大)
+      { x: 836, y: 471, w: 836, h: 470 }  // ⑤ 決意(集中・反撃準備)
+    ];
+    // center-crop each slot to a 4:3 landscape rect so all 5 frames display consistently
+    const PILOT_ASPECT = 4 / 3;
+    const PILOT_CROPS = PILOT_SLOTS.map((s) => {
+      const slotAspect = s.w / s.h;
+      if (slotAspect > PILOT_ASPECT) {
+        const w = s.h * PILOT_ASPECT;
+        return { x: s.x + (s.w - w) / 2, y: s.y, w, h: s.h };
+      }
+      const h = s.w / PILOT_ASPECT;
+      return { x: s.x, y: s.y + (s.h - h) / 2, w: s.w, h };
+    });
 
     const state = {
       running: true,
@@ -287,7 +290,9 @@
         // landing: auto-fly to the floor once the descent timer ends, then CLEAR
         landing: { active: false, timer: 0, duration: 90, progress: 0 }
       },
-      cleared: false
+      cleared: false,
+      // pilot portrait: brief "被弾" flash timer shown right after taking damage
+      portrait: { hitTimer: 0 }
     };
 
     const tunnel = {
@@ -464,6 +469,7 @@
       state.fall.landing.timer = 0;
       state.fall.landing.progress = 0;
       state.cleared = false;
+      state.portrait.hitTimer = 0;
 
       tunnel.center = canvas.height / 2;
       tunnel.centerVel = 0;
@@ -1012,6 +1018,7 @@
             // reset any in-progress laser charge when actually taking damage
             releaseLaserChargeOnHit();
             state.ship.hp = Math.max(0, state.ship.hp - 5);
+            state.portrait.hitTimer = 18;
             createExplosion(b.x, b.y, "red");
             if (state.ship.hp <= 0) {
               state.running = false;
@@ -1066,6 +1073,7 @@
       // always advance global frame (keeps animations consistent) and caption timer
       state.frame++;
       if (state.captionTimer > 0) state.captionTimer--;
+      if (state.portrait.hitTimer > 0) state.portrait.hitTimer--;
 
       // handle goal hold countdown (runs even while paused)
       if (state.goalHold && state.goalHold.active) {
@@ -1151,6 +1159,7 @@
             if (!tryUseLaserShield()) {
               releaseLaserChargeOnHit();
               state.ship.hp = Math.max(0, state.ship.hp - 5);
+            state.portrait.hitTimer = 18;
               if (state.ship.hp <= 0) {
                 createExplosion(state.ship.x, state.ship.y, "red");
                 state.running = false;
@@ -1259,6 +1268,7 @@
             // reset any in-progress laser charge when actually taking contact damage
             releaseLaserChargeOnHit();
             state.ship.hp = Math.max(0, state.ship.hp - 5);
+            state.portrait.hitTimer = 18;
             if (state.ship.hp <= 0) {
               createExplosion(state.ship.x, state.ship.y, "red");
               state.running = false;
@@ -1544,6 +1554,46 @@
       }
     }
 
+    function getPortraitFrameIndex() {
+      if (state.portrait.hitTimer > 0) return 1; // ② 被弾(衝撃)
+      const hp = typeof state.ship.hp === "number" ? state.ship.hp : 100;
+      if (hp > 70) return 0; // ① 通常(冷静)
+      if (hp > 40) return 2; // ③ 怒り(戦闘モード)
+      if (hp > 20) return 3; // ④ 苦痛(ダメージ大)
+      return 4; // ⑤ 決意(集中・反撃準備)
+    }
+
+    // picks a corner that keeps clear of the ship's current position
+    function getPortraitPosition(w, h) {
+      const margin = 20;
+      const rightX = canvas.width - w - margin;
+      const leftX = margin;
+      const topY = 40; // below the HP gauge
+      const bottomY = canvas.height - h - margin;
+      const nearRightEdge = state.ship.x > canvas.width - (w + margin + 80);
+      if (nearRightEdge) {
+        return { x: leftX, y: bottomY };
+      }
+      return state.ship.y < canvas.height / 2 ? { x: rightX, y: bottomY } : { x: rightX, y: topY };
+    }
+
+    function drawPilotPortrait() {
+      if (!pilotImg.complete || !pilotImg.naturalWidth) return;
+      const w = 120;
+      const h = 90;
+      const crop = PILOT_CROPS[getPortraitFrameIndex()];
+      const pos = getPortraitPosition(w, h);
+      ctx.save();
+      ctx.strokeStyle = "#4d5f95";
+      ctx.lineWidth = 1;
+      ctx.shadowColor = "rgba(0,0,0,0.35)";
+      ctx.shadowBlur = 12;
+      ctx.drawImage(pilotImg, crop.x, crop.y, crop.w, crop.h, pos.x, pos.y, w, h);
+      ctx.shadowBlur = 0;
+      ctx.strokeRect(pos.x + 0.5, pos.y + 0.5, w - 1, h - 1);
+      ctx.restore();
+    }
+
     function render() {
       drawBackground();
       if (state.fall.active && state.fall.introActive) {
@@ -1566,6 +1616,7 @@
       drawShip();
       drawLaser();
       drawHud();
+      drawPilotPortrait();
     }
 
     function showCaption(text, frames) {
