@@ -196,23 +196,41 @@
       supported: false,
       active: false,
       calibrated: false,
-      baseline: { beta: 0, gamma: 0 },
+      baseline: { x: 0, y: 0 },
       deadzone: 6
     };
 
-    function applyGyroTilt(beta, gamma) {
+    // current screen rotation (0/90/180/270) so tilt axes can be remapped to how the phone is actually held
+    function getScreenAngle() {
+      if (window.screen && window.screen.orientation && typeof window.screen.orientation.angle === "number") {
+        return window.screen.orientation.angle;
+      }
+      if (typeof window.orientation === "number") return window.orientation;
+      return 0;
+    }
+
+    // rotates the device's raw beta/gamma into screen-relative x (left/right) and y (forward/back) tilt
+    function computeScreenTilt(beta, gamma) {
+      const angle = ((getScreenAngle() % 360) + 360) % 360;
+      if (angle === 90) return { x: -beta, y: gamma };
+      if (angle === 180) return { x: -gamma, y: -beta };
+      if (angle === 270) return { x: beta, y: -gamma };
+      return { x: gamma, y: beta };
+    }
+
+    function applyGyroTilt(x, y) {
       if (!gyro.calibrated) {
-        gyro.baseline.beta = beta;
-        gyro.baseline.gamma = gamma;
+        gyro.baseline.x = x;
+        gyro.baseline.y = y;
         gyro.calibrated = true;
         return;
       }
-      const dBeta = beta - gyro.baseline.beta;
-      const dGamma = gamma - gyro.baseline.gamma;
-      state.input.right = dGamma > gyro.deadzone;
-      state.input.left = dGamma < -gyro.deadzone;
-      state.input.down = dBeta > gyro.deadzone;
-      state.input.up = dBeta < -gyro.deadzone;
+      const dx = x - gyro.baseline.x;
+      const dy = y - gyro.baseline.y;
+      state.input.right = dx > gyro.deadzone;
+      state.input.left = dx < -gyro.deadzone;
+      state.input.down = dy > gyro.deadzone;
+      state.input.up = dy < -gyro.deadzone;
     }
 
     function activateGyroControls() {
@@ -228,7 +246,8 @@
         gyro.supported = true;
         activateGyroControls();
       }
-      applyGyroTilt(e.beta, e.gamma);
+      const tilt = computeScreenTilt(e.beta, e.gamma);
+      applyGyroTilt(tilt.x, tilt.y);
     }
 
     function recalibrateGyro() {
@@ -254,6 +273,11 @@
       // reset the calibration baseline to how the player is holding the device right now
       recalibrateGyro();
       window.addEventListener("deviceorientation", handleOrientation);
+      // rotating the phone mid-game changes what "neutral" tilt means, so recalibrate on rotation
+      window.addEventListener("orientationchange", recalibrateGyro);
+      if (window.screen && window.screen.orientation) {
+        window.screen.orientation.addEventListener("change", recalibrateGyro);
+      }
     }
 
     const startButton = document.createElement("button");
