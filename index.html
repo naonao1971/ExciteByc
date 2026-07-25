@@ -1780,8 +1780,8 @@
 
     function drawPilotPortrait() {
       if (!pilotImg.complete || !pilotImg.naturalWidth) return;
-      const w = 120;
-      const h = 90;
+      const w = 156; // 120 * 1.3
+      const h = 117; // 90 * 1.3
       const crop = PILOT_CROPS[getPortraitFrameIndex()];
       const pos = getPortraitPosition(w, h);
       ctx.save();
