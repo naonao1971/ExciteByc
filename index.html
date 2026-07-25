@@ -2389,7 +2389,16 @@
       render();
     }
 
+    // ランキング登録フォームなどの入力欄にフォーカスがある間は、ゲーム操作キー
+    // （WASD/矢印/X/Z/Space）を奪わない。スマホの仮想キーボードで "a" などの
+    // 半角文字が入力できなくなっていたのはこれが原因。
+    function isTypingInFormField(e) {
+      const el = e.target;
+      return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+    }
+
     window.addEventListener("keydown", (e) => {
+      if (isTypingInFormField(e)) return;
       if (e.code === "ArrowUp" || e.code === "KeyW") {
         state.input.up = true;
         e.preventDefault();
@@ -2416,6 +2425,7 @@
     });
 
     window.addEventListener("keyup", (e) => {
+      if (isTypingInFormField(e)) return;
       if (e.code === "ArrowUp" || e.code === "KeyW") {
         state.input.up = false;
       } else if (e.code === "ArrowDown" || e.code === "KeyS") {
