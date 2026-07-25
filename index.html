@@ -13,9 +13,13 @@
       font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
       background: #07090f;
       color: #e8ecff;
-      display: grid;
-      place-items: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 18px;
       min-height: 100vh;
+      padding: 20px 12px 40px;
+      box-sizing: border-box;
     }
     .wrap {
       position: relative;
@@ -175,6 +179,125 @@
     .controls-bottom > * {
       pointer-events: auto;
     }
+
+    /* --- ランキング（TOP10） --- */
+    .leaderboard {
+      width: min(92vw, 960px);
+      box-sizing: border-box;
+      background: rgba(16, 28, 56, 0.55);
+      border: 1px solid #3f558e;
+      border-radius: 14px;
+      padding: 16px 18px 20px;
+      display: none;
+    }
+    .leaderboard.visible {
+      display: block;
+    }
+    .leaderboard-title {
+      margin: 0 0 10px;
+      font-size: 16px;
+      color: #ffe08a;
+      text-align: center;
+    }
+    .leaderboard-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .leaderboard-row {
+      display: grid;
+      grid-template-columns: 40px 32px 1fr auto;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 10px;
+      background: rgba(7, 12, 26, 0.6);
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    .leaderboard-row .lb-rank {
+      color: #9db0ff;
+      font-weight: 700;
+      text-align: center;
+    }
+    .leaderboard-row .lb-avatar {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      object-fit: cover;
+      background: #1b2340;
+    }
+    .leaderboard-row .lb-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .leaderboard-row .lb-xlink {
+      color: #7db0ff;
+      text-decoration: none;
+      font-size: 12px;
+    }
+    .leaderboard-row .lb-xlink:hover {
+      text-decoration: underline;
+    }
+    .leaderboard-row .lb-score {
+      color: #ffe08a;
+      font-weight: 700;
+      text-align: right;
+    }
+    .leaderboard-empty {
+      color: #9db0ff;
+      font-size: 13px;
+      text-align: center;
+      padding: 8px 0;
+    }
+    .score-register {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid #3f558e;
+      display: none;
+      flex-direction: column;
+      gap: 8px;
+      align-items: center;
+    }
+    .score-register.visible {
+      display: flex;
+    }
+    .score-register-msg {
+      margin: 0;
+      color: #ffe08a;
+      font-weight: 700;
+      font-size: 14px;
+    }
+    .score-register input {
+      width: min(280px, 90%);
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid #3f558e;
+      background: rgba(7, 12, 26, 0.8);
+      color: #e8ecff;
+      font: inherit;
+    }
+    .score-register button {
+      padding: 8px 20px;
+      border-radius: 999px;
+      border: 1px solid #3f8b6c;
+      background: linear-gradient(180deg, #17604c, #0f362c);
+      color: #eef4ff;
+      font: inherit;
+      font-weight: 700;
+    }
+    .score-register button:disabled {
+      opacity: 0.5;
+    }
+    .rank-submit-status {
+      margin: 0;
+      font-size: 12px;
+      color: #9db0ff;
+      min-height: 1.2em;
+    }
   </style>
 </head>
 <body>
@@ -195,10 +318,140 @@
     </div>
   </div>
 
+  <section id="leaderboard" class="leaderboard" aria-label="ランキング TOP10">
+    <h2 class="leaderboard-title">🏆 TOP10 ランキング</h2>
+    <ol id="leaderboardList" class="leaderboard-list"></ol>
+    <div id="scoreRegisterForm" class="score-register">
+      <p class="score-register-msg">TOP10入り！ニックネームを登録してください</p>
+      <input id="rankNickname" type="text" placeholder="ニックネーム（必須）" maxlength="20" autocomplete="off" />
+      <input id="rankXid" type="text" placeholder="XのユーザーID（任意・@なし）" maxlength="20" autocomplete="off" />
+      <button id="rankSubmitBtn" type="button">登録する</button>
+      <p id="rankSubmitStatus" class="rank-submit-status"></p>
+    </div>
+  </section>
+
   <script>
     const canvas = document.getElementById("game");
     const ctx = canvas.getContext("2d");
     const gyroStatus = document.getElementById("gyroStatus");
+
+    // --- ランキング (Google スプレッドシート連携) ---
+    // デプロイ後の Apps Script Web App URL をここに設定してください（apps-script.gs 参照）
+    const GAS_URL = "";
+    const leaderboardPanel = document.getElementById("leaderboard");
+    const leaderboardList = document.getElementById("leaderboardList");
+    const scoreRegisterForm = document.getElementById("scoreRegisterForm");
+    const rankNicknameInput = document.getElementById("rankNickname");
+    const rankXidInput = document.getElementById("rankXid");
+    const rankSubmitBtn = document.getElementById("rankSubmitBtn");
+    const rankSubmitStatus = document.getElementById("rankSubmitStatus");
+    let leaderboardCache = [];
+    let scoreSubmitted = false;
+
+    function escapeHTML(s) {
+      return String(s || "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+    }
+
+    function renderLeaderboard() {
+      if (!leaderboardList) return;
+      if (!leaderboardCache.length) {
+        leaderboardList.innerHTML = '<li class="leaderboard-empty">まだ記録がありません</li>';
+        return;
+      }
+      leaderboardList.innerHTML = leaderboardCache
+        .slice(0, 10)
+        .map((r, i) => {
+          const rank = i + 1;
+          const medal = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `${rank}`;
+          const xid = String(r.xid || "").replace(/^@/, "").trim();
+          const xPart =
+            xid && /^[A-Za-z0-9_]{1,15}$/.test(xid)
+              ? `<img class="lb-avatar" src="https://unavatar.io/x/${encodeURIComponent(xid)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
+                 <a class="lb-xlink" href="https://x.com/${encodeURIComponent(xid)}" target="_blank" rel="noopener noreferrer">@${escapeHTML(xid)}</a>`
+              : '<span></span><span></span>';
+          return `<li class="leaderboard-row">
+              <span class="lb-rank">${medal}</span>
+              ${xPart}
+              <span class="lb-name">${escapeHTML(r.nickname)}</span>
+              <span class="lb-score">${Math.floor(r.score)}</span>
+            </li>`;
+        })
+        .join("");
+    }
+
+    function loadLeaderboard() {
+      if (!GAS_URL) {
+        renderLeaderboard();
+        return;
+      }
+      fetch(GAS_URL, { cache: "no-store" })
+        .then((r) => r.json())
+        .then((d) => {
+          leaderboardCache = (d.records || []).slice().sort((a, b) => b.score - a.score);
+          renderLeaderboard();
+        })
+        .catch(() => renderLeaderboard());
+    }
+
+    function qualifiesForTop10(score) {
+      if (leaderboardCache.length < 10) return true;
+      return score > leaderboardCache[9].score;
+    }
+
+    function setLeaderboardVisible(visible) {
+      if (!leaderboardPanel) return;
+      leaderboardPanel.classList.toggle("visible", !!visible);
+    }
+
+    function showScoreRegisterForm() {
+      if (!scoreRegisterForm) return;
+      scoreRegisterForm.classList.add("visible");
+      rankNicknameInput.value = "";
+      rankXidInput.value = "";
+      rankSubmitStatus.textContent = "";
+      rankSubmitBtn.disabled = false;
+    }
+
+    function hideScoreRegisterForm() {
+      if (!scoreRegisterForm) return;
+      scoreRegisterForm.classList.remove("visible");
+    }
+
+    if (rankSubmitBtn) {
+      rankSubmitBtn.addEventListener("click", () => {
+        const nickname = rankNicknameInput.value.trim();
+        if (!nickname) {
+          rankSubmitStatus.textContent = "ニックネームを入力してください";
+          rankNicknameInput.focus();
+          return;
+        }
+        const xid = rankXidInput.value.trim();
+        rankSubmitBtn.disabled = true;
+        rankSubmitStatus.textContent = "登録中...";
+        const record = { nickname, xid, score: Math.floor(state.score), created: Date.now() };
+        if (!GAS_URL) {
+          rankSubmitStatus.textContent = "ランキング機能が未設定です（GAS_URL 未設定）";
+          rankSubmitBtn.disabled = false;
+          return;
+        }
+        fetch(GAS_URL, { method: "POST", body: JSON.stringify({ action: "add", record }) })
+          .then((r) => r.json())
+          .then((d) => {
+            if (d.success) {
+              rankSubmitStatus.textContent = "登録しました！";
+              hideScoreRegisterForm();
+              loadLeaderboard();
+            } else {
+              rankSubmitStatus.textContent = "登録に失敗しました: " + (d.error || "");
+              rankSubmitBtn.disabled = false;
+            }
+          })
+          .catch((e) => {
+            rankSubmitStatus.textContent = "通信エラー: " + e.message;
+            rankSubmitBtn.disabled = false;
+          });
+      });
+    }
     const touchPad = document.getElementById("touchPad");
     const firePad = document.getElementById("firePad");
     const touchUp = document.getElementById("touchUp");
@@ -618,6 +871,8 @@
       state.running = true;
       state.score = 0;
       state.speed = 2.6;
+      scoreSubmitted = false;
+      hideScoreRegisterForm();
       state.frame = 0;
       state.ship.x = 130;
       state.ship.y = canvas.height / 2;
@@ -1733,8 +1988,27 @@
       startButton.style.display = shouldShow ? "" : "none";
     }
 
+    // ランキングパネルはタイトル画面とクリア画面の下段にのみ表示。
+    // クリア直後、TOP10入りしていれば一度だけ登録フォームを開く。
+    function updateLeaderboardVisibility() {
+      const shouldShow = !state.started || state.cleared;
+      setLeaderboardVisible(shouldShow);
+      if (state.cleared && !scoreSubmitted) {
+        scoreSubmitted = true;
+        if (qualifiesForTop10(state.score)) {
+          showScoreRegisterForm();
+        } else {
+          hideScoreRegisterForm();
+        }
+      }
+      if (!shouldShow) {
+        hideScoreRegisterForm();
+      }
+    }
+
     function render() {
       updateStartButtonVisibility();
+      updateLeaderboardVisibility();
       if (!state.started) {
         drawTitleScreen();
         return;
@@ -2088,6 +2362,7 @@
 
     // populate an idle scene (columns/ship/stars) before the player presses スタート
     resetGame();
+    loadLeaderboard();
     loop();
   </script>
 </body>
