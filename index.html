@@ -468,11 +468,11 @@
         timer: 0,
         duration: 30 * 60,
         rows: [],
-        // intro: bullets stop, floor door slides open, ship rotates 90° before the descent begins
+        // intro: bullets stop, ship rotates 90° while easing downward into the shaft
         introActive: false,
         introTimer: 0,
-        introDuration: 120,
-        doorProgress: 0,
+        introDuration: 90,
+        introStartY: 0,
         shipAngle: 0,
         // landing: auto-fly to the floor once the descent timer ends, then CLEAR
         landing: { active: false, timer: 0, duration: 90, progress: 0 }
@@ -495,9 +495,9 @@
     const fallTunnel = {
       center: canvas.width / 2,
       centerVel: 0,
-      gap: 200,
-      minGap: 120,
-      maxGap: 260,
+      gap: 260,
+      minGap: 156, // 120 * 1.3 — wider shaft, lower difficulty
+      maxGap: 338, // 260 * 1.3
       roughness: 0.42
     };
 
@@ -556,7 +556,7 @@
       fallTunnel.center = Math.max(90, Math.min(canvas.width - 90, fallTunnel.center));
 
       const wave = Math.sin(state.frame * 0.012) * 22;
-      const gapTarget = 190 + wave;
+      const gapTarget = 247 + wave; // 190 * 1.3 — wider, lower difficulty
       fallTunnel.gap += (gapTarget - fallTunnel.gap) * 0.03;
       fallTunnel.gap = Math.max(fallTunnel.minGap, Math.min(fallTunnel.maxGap, fallTunnel.gap));
     }
@@ -587,17 +587,17 @@
     function beginFall() {
       state.fall.active = true;
       state.fall.timer = 0;
-      // intro: bullets already stopped, door slides open, ship rotates 90° before descent
+      // intro: bullets already stopped, ship rotates 90° while it keeps easing downward —
+      // no screen wipe, so it reads as a continuous descent rather than a scene cut
       state.fall.introActive = true;
       state.fall.introTimer = 0;
-      state.fall.doorProgress = 0;
+      state.fall.introStartY = state.ship.y;
       state.fall.shipAngle = 0;
       fallTunnel.center = canvas.width / 2;
       fallTunnel.centerVel = 0;
-      fallTunnel.gap = 220;
+      fallTunnel.gap = 260;
       seedFallRows();
       state.ship.x = canvas.width / 2;
-      state.ship.y = canvas.height / 2;
       state.ship.vx = 0;
       state.ship.vy = 0;
       state.bullets.length = 0;
@@ -650,7 +650,7 @@
       state.fall.rows.length = 0;
       state.fall.introActive = false;
       state.fall.introTimer = 0;
-      state.fall.doorProgress = 0;
+      state.fall.introStartY = 0;
       state.fall.shipAngle = 0;
       state.fall.landing.active = false;
       state.fall.landing.timer = 0;
@@ -1284,14 +1284,18 @@
       if (state.fall.active) {
         if (!state.running) return;
 
-        // intro: bullets already stopped, floor door slides open, ship rotates 90°
+        // intro: bullets already stopped, ship rotates 90° while easing downward —
+        // no screen wipe, so the transition reads as continuing straight down
         if (state.fall.introActive) {
           state.fall.introTimer++;
           const p = Math.min(1, state.fall.introTimer / state.fall.introDuration);
-          state.fall.doorProgress = p;
+          const eased = 1 - Math.pow(1 - p, 2); // ease-out, so the descent starts gently and picks up
           // rotate nose-up (negative = counter-clockwise in canvas' y-down space)
           state.fall.shipAngle = p * (-Math.PI / 2);
-          state.scrollSpeed = 0;
+          // ship keeps easing toward the top of the shaft instead of sitting still
+          state.ship.y = state.fall.introStartY + (70 - state.fall.introStartY) * eased;
+          // scroll speed ramps up from 0 instead of freezing, so motion never fully stops
+          state.scrollSpeed = state.speed * 0.7 * eased;
           updateStars();
           updateExplosions();
           updateLaser();
@@ -1512,44 +1516,20 @@
 
     // part 3: vertical fall shaft — walls on left/right, rows indexed by y
     function drawFallTunnel() {
-      ctx.fillStyle = "#2a1f45";
+      // same base colors as the horizontal tunnel, for visual continuity across the stage transition
+      ctx.fillStyle = "#193164";
       for (let y = 0; y < state.fall.rows.length; y++) {
         const r = state.fall.rows[y];
         ctx.fillRect(0, y, r.left, 1);
         ctx.fillRect(r.right, y, canvas.width - r.right, 1);
       }
 
-      ctx.fillStyle = "#b085ff";
+      ctx.fillStyle = "#5ca2ff";
       for (let y = 0; y < state.fall.rows.length; y += 3) {
         const r = state.fall.rows[y];
         ctx.fillRect(r.left - 2, y, 2, 2);
         ctx.fillRect(r.right, y, 2, 2);
       }
-    }
-
-    // floor door sliding open before the fall begins (0 = closed, 1 = fully open)
-    function drawFallDoor(progress) {
-      const halfW = canvas.width / 2;
-      const panelW = halfW * (1 - progress);
-      if (panelW <= 0) return;
-
-      const panelGradient = (x0) => {
-        const g = ctx.createLinearGradient(x0, 0, x0, canvas.height);
-        g.addColorStop(0, "#2a3357");
-        g.addColorStop(0.5, "#1b2340");
-        g.addColorStop(1, "#2a3357");
-        return g;
-      };
-
-      ctx.fillStyle = panelGradient(0);
-      ctx.fillRect(0, 0, panelW, canvas.height);
-      ctx.fillStyle = panelGradient(canvas.width - panelW);
-      ctx.fillRect(canvas.width - panelW, 0, panelW, canvas.height);
-
-      // glowing seam at each door's leading edge
-      ctx.fillStyle = "rgba(140,190,255,0.65)";
-      ctx.fillRect(panelW - 2, 0, 4, canvas.height);
-      ctx.fillRect(canvas.width - panelW - 2, 0, 4, canvas.height);
     }
 
     // ground the ship auto-lands on at the end of the fall (0 = not visible, 1 = fully risen)
@@ -1847,8 +1827,9 @@
       }
       drawBackground();
       if (state.fall.active && state.fall.introActive) {
+        // no screen wipe here on purpose — keep the open chamber visible so the
+        // ship's rotation + descent reads as continuous motion, not a scene cut
         drawTunnel();
-        drawFallDoor(state.fall.doorProgress);
       } else if (state.fall.active && state.fall.landing.active) {
         drawFallTunnel();
         drawFallLanding(state.fall.landing.progress);
