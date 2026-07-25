@@ -393,6 +393,10 @@
     const clearImg = new Image();
     clearImg.src = "image02png.png";
 
+    // title illustration shown on the start screen, before the player presses スタート
+    const titleImg = new Image();
+    titleImg.src = "image01.jpg";
+
     const state = {
       running: true,
       // becomes true once the player presses スタート; gates update() so nothing moves before that
@@ -1791,7 +1795,47 @@
       ctx.restore();
     }
 
+    // start screen: image01.jpg centered, shown until the player presses スタート
+    function drawTitleScreen() {
+      drawBackground();
+      if (titleImg.complete && titleImg.naturalWidth) {
+        const maxW = canvas.width * 0.72;
+        const maxH = canvas.height * 0.72;
+        const scale = Math.min(maxW / titleImg.naturalWidth, maxH / titleImg.naturalHeight);
+        const w = titleImg.naturalWidth * scale;
+        const h = titleImg.naturalHeight * scale;
+        const x = (canvas.width - w) / 2;
+        const y = (canvas.height - h) / 2 - 10;
+        ctx.save();
+        ctx.shadowColor = "rgba(0,0,0,0.5)";
+        ctx.shadowBlur = 24;
+        ctx.drawImage(titleImg, x, y, w, h);
+        ctx.restore();
+        ctx.strokeStyle = "#4d5f95";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+
+        ctx.fillStyle = "#dbe6ff";
+        ctx.textAlign = "center";
+        ctx.font = "bold 20px ui-sans-serif, system-ui";
+        ctx.fillText("スタートを押してください", canvas.width / 2, y + h + 40);
+        ctx.textAlign = "left";
+      }
+    }
+
+    // start button only shows while waiting to start: before the first スタート press,
+    // or after GAME OVER / CLEAR (where it doubles as the restart trigger)
+    function updateStartButtonVisibility() {
+      const shouldShow = !state.started || state.gameOver || state.cleared;
+      startButton.style.display = shouldShow ? "" : "none";
+    }
+
     function render() {
+      updateStartButtonVisibility();
+      if (!state.started) {
+        drawTitleScreen();
+        return;
+      }
       drawBackground();
       if (state.fall.active && state.fall.introActive) {
         drawTunnel();
