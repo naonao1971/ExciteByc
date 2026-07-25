@@ -1634,6 +1634,8 @@
             state.fall.active = false;
             state.running = false;
             state.cleared = true;
+            // クリアボーナス：残りHP x10 ポイント加算
+            state.score += Math.max(0, state.ship.hp) * 10;
           }
           return;
         }
