@@ -2395,6 +2395,12 @@
     let _lastFrameTime = 0;
     function loop(timestamp) {
       requestAnimationFrame(loop);
+      // the very first call (from the direct loop() invocation at the bottom of this
+      // script, not from rAF) has no timestamp — treat that, or any other non-finite
+      // value, as "no time has passed yet". Without this guard, undefined - undefined
+      // produces NaN, which poisons _accumulatedMs forever (NaN + anything is NaN),
+      // permanently failing the while-loop condition below and freezing the game.
+      if (!Number.isFinite(timestamp)) timestamp = _lastFrameTime || 0;
       if (!_lastFrameTime) _lastFrameTime = timestamp;
       let elapsed = timestamp - _lastFrameTime;
       _lastFrameTime = timestamp;
