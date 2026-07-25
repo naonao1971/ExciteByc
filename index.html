@@ -87,13 +87,22 @@
       font-size: 13px;
     }
     .touch-pad {
+      /* scales down on narrow screens instead of staying a fixed 56px */
+      --dpad-size: clamp(34px, 9vw, 56px);
+      --dpad-gap: clamp(4px, 1.2vw, 8px);
       position: relative;
       z-index: 1;
       display: none;
-      grid-template-columns: repeat(3, 56px);
-      grid-template-rows: repeat(3, 56px);
-      gap: 8px;
+      grid-template-columns: repeat(3, var(--dpad-size));
+      grid-template-rows: repeat(3, var(--dpad-size));
+      gap: var(--dpad-gap);
       pointer-events: auto;
+    }
+    .touch-pad .touch-btn {
+      width: var(--dpad-size);
+      height: var(--dpad-size);
+      font-size: clamp(14px, 4vw, 22px);
+      border-radius: clamp(8px, 2.5vw, 14px);
     }
     .touch-up {
       grid-column: 2;
@@ -155,7 +164,7 @@
     }
     .controls-bottom {
       position: absolute;
-      right: 36px;
+      right: 12px;
       bottom: 18px;
       z-index: 3;
       display: flex;
