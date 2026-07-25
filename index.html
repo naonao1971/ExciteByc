@@ -377,7 +377,7 @@
 
     // --- ランキング (Google スプレッドシート連携) ---
     // デプロイ後の Apps Script Web App URL をここに設定してください（apps-script.gs 参照）
-    const GAS_URL = "https://script.google.com/macros/s/AKfycbzZeph3-am5p_4JZ6nhTe5p9FhNZ0zijZX5w3Ij7Xyi_gi8ssFF9HdcfT-QuGfSblAT/exec";
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbyTTaCaeW6hPn60U2UeG3Cle9tHjQ4I4PaujzYkXzNKaxprlMhlR4KELXv0dE7VVyFr/exec";
     const leaderboardPanel = document.getElementById("leaderboard");
     const leaderboardList = document.getElementById("leaderboardList");
     const scoreRegisterForm = document.getElementById("scoreRegisterForm");
@@ -386,6 +386,8 @@
     const rankSubmitBtn = document.getElementById("rankSubmitBtn");
     const rankSubmitStatus = document.getElementById("rankSubmitStatus");
     const rankXidPreview = document.getElementById("rankXidPreview");
+    // タッチ操作対応端末をモバイルとみなし、ランキング登録時に記録する
+    const isMobileDevice = "ontouchstart" in window || navigator.maxTouchPoints > 0;
     let leaderboardCache = [];
     let scoreSubmitted = false;
     // X ID の検証状態: 未入力なら常に登録可、入力中は検証が完了(found)するまで登録不可
@@ -414,9 +416,10 @@
               ? `<img class="lb-avatar" src="https://unavatar.io/x/${encodeURIComponent(xid)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
                  <a class="lb-xlink" href="https://x.com/${encodeURIComponent(xid)}" target="_blank" rel="noopener noreferrer">@${escapeHTML(xid)}</a>`
               : "";
+          const deviceIcon = r.device === "モバイル" ? "📱" : r.device === "PC" ? "💻" : "";
           return `<li class="leaderboard-row">
               <span class="lb-rank">${medal}</span>
-              <span class="lb-name">${escapeHTML(r.nickname)}</span>
+              <span class="lb-name">${deviceIcon ? `<span class="lb-device" title="${escapeHTML(r.device)}">${deviceIcon}</span> ` : ""}${escapeHTML(r.nickname)}</span>
               <span class="lb-xname">${xPart}</span>
               <span class="lb-score">${Math.floor(r.score)}</span>
             </li>`;
@@ -557,7 +560,13 @@
         const xid = rankXidInput.value.trim().replace(/^@/, "");
         rankSubmitBtn.disabled = true;
         rankSubmitStatus.textContent = "登録中...";
-        const record = { nickname, xid, score: Math.floor(state.score), created: Date.now() };
+        const record = {
+          nickname,
+          xid,
+          score: Math.floor(state.score),
+          created: Date.now(),
+          device: isMobileDevice ? "モバイル" : "PC"
+        };
         if (!GAS_URL) {
           rankSubmitStatus.textContent = "ランキング機能が未設定です（GAS_URL 未設定）";
           rankSubmitBtn.disabled = false;

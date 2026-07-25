@@ -12,7 +12,10 @@
  *    index.html の GAS_URL 定数にセットする
  *
  * スプレッドシートの列（1レコード = 1行）:
- *   スコア | ニックネーム | X ID | 登録日時
+ *   スコア | ニックネーム | X ID | 登録日時 | 端末
+ *
+ * ※「端末」は末尾に追加した列です。過去に登録済みの行は空欄のままになりますが、
+ *   既存の4列の位置はそのままなので過去データが壊れることはありません。
  */
 
 const SHEET_NAME = "ranking";
@@ -23,7 +26,7 @@ function getSheet_() {
   let sheet = ss.getSheetByName(SHEET_NAME);
   if (!sheet) {
     sheet = ss.insertSheet(SHEET_NAME);
-    sheet.appendRow(["スコア", "ニックネーム", "X ID", "登録日時"]);
+    sheet.appendRow(["スコア", "ニックネーム", "X ID", "登録日時", "端末"]);
   }
   return sheet;
 }
@@ -42,7 +45,8 @@ function doGet(e) {
         score: Number(r[0] || 0),
         nickname: String(r[1] || ""),
         xid: String(r[2] || ""),
-        created: r[3] ? new Date(r[3]).getTime() : null
+        created: r[3] ? new Date(r[3]).getTime() : null,
+        device: String(r[4] || "")
       };
     })
     .sort(function (a, b) {
@@ -65,13 +69,14 @@ function doPost(e) {
       const xid = String(rec.xid || "").replace(/^@/, "").trim().slice(0, 20);
       const score = Number(rec.score || 0);
       const created = rec.created || Date.now();
+      const device = String(rec.device || "").trim().slice(0, 20);
 
       if (!nickname) {
         return jsonOut_({ success: false, error: "nickname is required" });
       }
 
       const sheet = getSheet_();
-      sheet.appendRow([score, nickname, xid, new Date(created)]);
+      sheet.appendRow([score, nickname, xid, new Date(created), device]);
       return jsonOut_({ success: true });
     }
 
