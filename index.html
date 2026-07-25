@@ -263,9 +263,9 @@
       padding: 8px 0;
     }
     .score-register {
-      margin-top: 14px;
-      padding-top: 14px;
-      border-top: 1px solid #3f558e;
+      margin-bottom: 14px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid #3f558e;
       display: none;
       flex-direction: column;
       gap: 8px;
@@ -358,8 +358,6 @@
   </div>
 
   <section id="leaderboard" class="leaderboard" aria-label="ランキング TOP10">
-    <h2 class="leaderboard-title">🏆 TOP10 ランキング</h2>
-    <ol id="leaderboardList" class="leaderboard-list"></ol>
     <div id="scoreRegisterForm" class="score-register">
       <p class="score-register-msg">TOP10入り！ニックネームを登録してください</p>
       <input id="rankNickname" type="text" placeholder="ニックネーム（必須）" maxlength="20" autocomplete="off" />
@@ -368,6 +366,8 @@
       <button id="rankSubmitBtn" type="button">登録する</button>
       <p id="rankSubmitStatus" class="rank-submit-status"></p>
     </div>
+    <h2 class="leaderboard-title">🏆 TOP10 ランキング</h2>
+    <ol id="leaderboardList" class="leaderboard-list"></ol>
   </section>
 
   <script>
