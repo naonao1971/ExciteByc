@@ -11,8 +11,8 @@
  * 5. デプロイ後に発行される URL（https://script.google.com/macros/s/.../exec）を
  *    index.html の GAS_URL 定数にセットする
  *
- * データ形式（1レコード = 1行）:
- *   nickname | xid | score | created
+ * スプレッドシートの列（1レコード = 1行）:
+ *   スコア | ニックネーム | X ID | 登録日時
  */
 
 const SHEET_NAME = "ranking";
@@ -23,7 +23,7 @@ function getSheet_() {
   let sheet = ss.getSheetByName(SHEET_NAME);
   if (!sheet) {
     sheet = ss.insertSheet(SHEET_NAME);
-    sheet.appendRow(["nickname", "xid", "score", "created"]);
+    sheet.appendRow(["スコア", "ニックネーム", "X ID", "登録日時"]);
   }
   return sheet;
 }
@@ -35,13 +35,13 @@ function doGet(e) {
 
   const records = rows
     .filter(function (r) {
-      return r[0] !== "" && r[0] != null;
+      return r[1] !== "" && r[1] != null; // ニックネームが空の行は除外
     })
     .map(function (r) {
       return {
-        nickname: String(r[0] || ""),
-        xid: String(r[1] || ""),
-        score: Number(r[2] || 0),
+        score: Number(r[0] || 0),
+        nickname: String(r[1] || ""),
+        xid: String(r[2] || ""),
         created: r[3] ? new Date(r[3]).getTime() : null
       };
     })
@@ -71,7 +71,7 @@ function doPost(e) {
       }
 
       const sheet = getSheet_();
-      sheet.appendRow([nickname, xid, score, new Date(created)]);
+      sheet.appendRow([score, nickname, xid, new Date(created)]);
       return jsonOut_({ success: true });
     }
 

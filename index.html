@@ -69,9 +69,10 @@
       background: linear-gradient(180deg, #17604c, #0f362c);
     }
     .hud-start {
+      /* left/top are set per-frame in JS (positionStartButton) to track the
+         canvas-space "start here" hint spot at any display scale */
       position: absolute;
-      top: 12px;
-      left: 160px;
+      transform: translate(-50%, -50%);
       z-index: 2;
       padding: 8px 14px;
       font-size: 14px;
@@ -337,7 +338,7 @@
 
     // --- ランキング (Google スプレッドシート連携) ---
     // デプロイ後の Apps Script Web App URL をここに設定してください（apps-script.gs 参照）
-    const GAS_URL = "";
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbzZeph3-am5p_4JZ6nhTe5p9FhNZ0zijZX5w3Ij7Xyi_gi8ssFF9HdcfT-QuGfSblAT/exec";
     const leaderboardPanel = document.getElementById("leaderboard");
     const leaderboardList = document.getElementById("leaderboardList");
     const scoreRegisterForm = document.getElementById("scoreRegisterForm");
@@ -1954,16 +1955,21 @@
     }
 
     // start screen: image01.jpg centered, shown until the player presses スタート
+    // fixed canvas-space anchor for the "start here" hint — the スタート button is
+    // positioned on top of this same spot each frame (see positionStartButton)
+    const TITLE_HINT_X = canvas.width / 2;
+    const TITLE_HINT_Y = canvas.height - 34;
+
     function drawTitleScreen() {
       drawBackground();
       if (titleImg.complete && titleImg.naturalWidth) {
         const maxW = canvas.width * 0.72;
-        const maxH = canvas.height * 0.72;
+        const maxH = canvas.height * 0.6;
         const scale = Math.min(maxW / titleImg.naturalWidth, maxH / titleImg.naturalHeight);
         const w = titleImg.naturalWidth * scale;
         const h = titleImg.naturalHeight * scale;
         const x = (canvas.width - w) / 2;
-        const y = (canvas.height - h) / 2 - 10;
+        const y = (canvas.height - h) / 2 - 30;
         ctx.save();
         ctx.shadowColor = "rgba(0,0,0,0.5)";
         ctx.shadowBlur = 24;
@@ -1972,13 +1978,18 @@
         ctx.strokeStyle = "#4d5f95";
         ctx.lineWidth = 1;
         ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
-
-        ctx.fillStyle = "#dbe6ff";
-        ctx.textAlign = "center";
-        ctx.font = "bold 20px ui-sans-serif, system-ui";
-        ctx.fillText("スタートを押してください", canvas.width / 2, y + h + 40);
-        ctx.textAlign = "left";
       }
+    }
+
+    // maps a canvas-internal coordinate to CSS pixels within .wrap (canvas sits at
+    // its top-left corner), so the DOM button lines up with the drawn hint spot
+    // regardless of how much the canvas is scaled down on smaller screens
+    function positionStartButton() {
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = rect.width / canvas.width;
+      const scaleY = rect.height / canvas.height;
+      startButton.style.left = `${TITLE_HINT_X * scaleX}px`;
+      startButton.style.top = `${TITLE_HINT_Y * scaleY}px`;
     }
 
     // start button only shows while waiting to start: before the first スタート press,
@@ -1986,6 +1997,7 @@
     function updateStartButtonVisibility() {
       const shouldShow = !state.started || state.gameOver || state.cleared;
       startButton.style.display = shouldShow ? "" : "none";
+      if (shouldShow) positionStartButton();
     }
 
     // ランキングパネルはタイトル画面とクリア画面の下段にのみ表示。
