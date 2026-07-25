@@ -4,6 +4,19 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Scramble Tunnel Prototype</title>
+  <!-- OGP / Twitter Card -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Scramble Tunnel Prototype" />
+  <meta property="og:description" content="横スクロールの洞窟探検からバルカン回避、地底への落下まで — スコアを競うブラウザゲーム" />
+  <meta property="og:url" content="https://naonao1971.github.io/ExciteByc/" />
+  <meta property="og:image" content="https://naonao1971.github.io/ExciteByc/image01.jpg" />
+  <meta property="og:image:width" content="1672" />
+  <meta property="og:image:height" content="941" />
+  <meta property="og:locale" content="ja_JP" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Scramble Tunnel Prototype" />
+  <meta name="twitter:description" content="横スクロールの洞窟探検からバルカン回避、地底への落下まで — スコアを競うブラウザゲーム" />
+  <meta name="twitter:image" content="https://naonao1971.github.io/ExciteByc/image01.jpg" />
   <style>
     :root {
       color-scheme: dark;
@@ -660,17 +673,39 @@
       });
     }
 
+    // Hiding the d-pad must wait for a *real* deviceorientation event — granting
+    // permission does not mean the device actually reports tilt data (many Android
+    // devices without a gyroscope, or desktop "mobile mode", grant permission
+    // instantly but never fire the event). Hiding on activation alone left players
+    // with neither the d-pad nor working tilt controls.
+    let _gyroFallbackTimer = null;
+
     function activateGyroControls() {
       gyro.active = true;
       state.input.gyroX = 0;
       state.input.gyroY = 0;
       recalibrateGyro();
-      setTouchPadVisible(false);
-      updateGyroStatus("ジャイロ操作中：端末を傾けて移動します（現在の向きが基準）");
       updateGyroToggleLabel();
+      if (gyro.supported) {
+        // we've already confirmed real tilt data arrives (e.g. re-enabled via the toggle)
+        setTouchPadVisible(false);
+        updateGyroStatus("ジャイロ操作中：端末を傾けて移動します（現在の向きが基準）");
+      } else {
+        // keep the d-pad visible until the first real event confirms tilt actually works
+        setTouchPadVisible(true);
+        updateGyroStatus("ジャイロを確認中...端末を傾けてみてください（反応がなければ十字ボタンをご利用ください）");
+        clearTimeout(_gyroFallbackTimer);
+        _gyroFallbackTimer = setTimeout(() => {
+          if (gyro.active && !gyro.supported) {
+            updateGyroStatus("ジャイロが検出できませんでした。十字ボタンで操作してください");
+            deactivateGyroControls();
+          }
+        }, 1500);
+      }
     }
 
     function deactivateGyroControls() {
+      clearTimeout(_gyroFallbackTimer);
       gyro.active = false;
       state.input.gyroX = 0;
       state.input.gyroY = 0;
@@ -681,8 +716,15 @@
 
     function handleOrientation(e) {
       if (e.beta == null || e.gamma == null) return;
+      const justConfirmed = !gyro.supported;
       gyro.supported = true;
       if (!gyro.active) return;
+      if (justConfirmed) {
+        // first real tilt data while active: now it's safe to hide the d-pad
+        clearTimeout(_gyroFallbackTimer);
+        setTouchPadVisible(false);
+        updateGyroStatus("ジャイロ操作中：端末を傾けて移動します（現在の向きが基準）");
+      }
       const tilt = computeScreenTilt(e.beta, e.gamma);
       applyGyroTilt(tilt.x, tilt.y);
     }
@@ -874,7 +916,9 @@
       },
       cleared: false,
       // pilot portrait: brief "被弾" flash timer shown right after taking damage
-      portrait: { hitTimer: 0 }
+      portrait: { hitTimer: 0 },
+      // big ship-explosion animation played before the GAME OVER telop appears
+      dying: { active: false, timer: 0, duration: 96 }
     };
 
     const tunnel = {
@@ -1054,6 +1098,8 @@
       state.fall.landing.progress = 0;
       state.cleared = false;
       state.portrait.hitTimer = 0;
+      state.dying.active = false;
+      state.dying.timer = 0;
       state.input.gyroX = 0;
       state.input.gyroY = 0;
       // ここが抜けていると、パート2(バルカン回避)中に力尽きた直後の再スタートが
@@ -1110,6 +1156,41 @@
         });
       }
       state.explosions.push(...particles);
+    }
+
+    // several large overlapping bursts, staggered slightly so it reads as one big blast
+    function createShipDeathExplosion(x, y) {
+      const colors = ["red", "yellow", "red", "yellow"];
+      colors.forEach((color, i) => {
+        const jitterX = x + (Math.random() - 0.5) * 14;
+        const jitterY = y + (Math.random() - 0.5) * 14;
+        const particles = [];
+        const count = 18;
+        for (let p = 0; p < count; p++) {
+          const angle = (Math.PI * 2 * p) / count + Math.random() * 0.3;
+          const speed = 2.2 + Math.random() * 5.5;
+          particles.push({
+            x: jitterX,
+            y: jitterY,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            life: 55 + Math.floor(Math.random() * 25) + i * 4,
+            maxLife: 90,
+            color
+          });
+        }
+        state.explosions.push(...particles);
+      });
+    }
+
+    // freezes gameplay and plays a big explosion before GAME OVER appears (see the
+    // "dying" block near the top of update())
+    function triggerShipDeath() {
+      if (state.dying.active || state.gameOver) return;
+      state.dying.active = true;
+      state.dying.timer = 0;
+      state.running = false;
+      createShipDeathExplosion(state.ship.x, state.ship.y);
     }
 
     function spawnBaseAtRight() {
@@ -1530,8 +1611,7 @@
             state.portrait.hitTimer = 18;
             createExplosion(b.x, b.y, "red");
             if (state.ship.hp <= 0) {
-              state.running = false;
-              state.gameOver = true;
+              triggerShipDeath();
             }
           }
         }
@@ -1572,6 +1652,18 @@
       state.frame++;
       if (state.captionTimer > 0) state.captionTimer--;
       if (state.portrait.hitTimer > 0) state.portrait.hitTimer--;
+
+      // HP hit 0: freeze gameplay and play the big explosion before GAME OVER shows
+      if (state.dying.active) {
+        state.dying.timer++;
+        updateExplosions();
+        state.displayScore += (state.score - state.displayScore) * 0.18;
+        if (state.dying.timer >= state.dying.duration) {
+          state.dying.active = false;
+          state.gameOver = true;
+        }
+        return;
+      }
 
       // handle goal hold countdown (runs even while paused)
       if (state.goalHold && state.goalHold.active) {
@@ -1665,9 +1757,7 @@
               state.ship.hp = Math.max(0, state.ship.hp - 5);
             state.portrait.hitTimer = 18;
               if (state.ship.hp <= 0) {
-                createExplosion(state.ship.x, state.ship.y, "red");
-                state.running = false;
-                state.gameOver = true;
+                triggerShipDeath();
               }
             }
           }
@@ -1774,9 +1864,7 @@
             state.ship.hp = Math.max(0, state.ship.hp - 5);
             state.portrait.hitTimer = 18;
             if (state.ship.hp <= 0) {
-              createExplosion(state.ship.x, state.ship.y, "red");
-              state.running = false;
-              state.gameOver = true;
+              triggerShipDeath();
             }
           }
         }
@@ -1853,6 +1941,7 @@
     }
 
     function drawShip() {
+      if (state.dying.active) return; // ship is gone — the explosion particles are the visual now
       const { x, y, radius } = state.ship;
       // holding X during the fall flares the under-ship thruster to brake the descent
       const boosting = state.fall.active && !state.fall.introActive && !state.fall.landing.active && state.laser.charging;
