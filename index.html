@@ -208,9 +208,10 @@
       flex-direction: column;
       gap: 6px;
     }
+    /* columns: 順位 / ニックネーム / Xの名称 / スコア */
     .leaderboard-row {
       display: grid;
-      grid-template-columns: 40px 32px 1fr auto;
+      grid-template-columns: 40px 1fr auto auto;
       align-items: center;
       gap: 10px;
       padding: 6px 10px;
@@ -223,22 +224,29 @@
       font-weight: 700;
       text-align: center;
     }
-    .leaderboard-row .lb-avatar {
-      width: 28px;
-      height: 28px;
-      border-radius: 50%;
-      object-fit: cover;
-      background: #1b2340;
-    }
     .leaderboard-row .lb-name {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+    .leaderboard-row .lb-xname {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .leaderboard-row .lb-avatar {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      object-fit: cover;
+      background: #1b2340;
+      flex: none;
+    }
     .leaderboard-row .lb-xlink {
       color: #7db0ff;
       text-decoration: none;
       font-size: 12px;
+      white-space: nowrap;
     }
     .leaderboard-row .lb-xlink:hover {
       text-decoration: underline;
@@ -299,6 +307,36 @@
       color: #9db0ff;
       min-height: 1.2em;
     }
+    .xid-preview {
+      width: min(280px, 90%);
+      min-height: 1.4em;
+      font-size: 12px;
+      display: none;
+      align-items: center;
+      gap: 6px;
+    }
+    .xid-preview.visible {
+      display: flex;
+    }
+    .xid-preview.xid-loading {
+      color: #9db0ff;
+    }
+    .xid-preview.xid-error {
+      color: #ff9d9d;
+    }
+    .xid-preview.xid-found {
+      color: #9dffb0;
+    }
+    .xid-preview .xid-avatar {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      object-fit: cover;
+      background: #1b2340;
+    }
+    .xid-preview a {
+      color: #7db0ff;
+    }
   </style>
 </head>
 <body>
@@ -326,6 +364,7 @@
       <p class="score-register-msg">TOP10入り！ニックネームを登録してください</p>
       <input id="rankNickname" type="text" placeholder="ニックネーム（必須）" maxlength="20" autocomplete="off" />
       <input id="rankXid" type="text" placeholder="XのユーザーID（任意・@なし）" maxlength="20" autocomplete="off" />
+      <div id="rankXidPreview" class="xid-preview"></div>
       <button id="rankSubmitBtn" type="button">登録する</button>
       <p id="rankSubmitStatus" class="rank-submit-status"></p>
     </div>
@@ -346,8 +385,12 @@
     const rankXidInput = document.getElementById("rankXid");
     const rankSubmitBtn = document.getElementById("rankSubmitBtn");
     const rankSubmitStatus = document.getElementById("rankSubmitStatus");
+    const rankXidPreview = document.getElementById("rankXidPreview");
     let leaderboardCache = [];
     let scoreSubmitted = false;
+    // X ID の検証状態: 未入力なら常に登録可、入力中は検証が完了(found)するまで登録不可
+    let xidVerifyState = "empty"; // "empty" | "loading" | "found" | "error"
+    let xidVerifyToken = 0; // 直前の検証より新しい結果だけ反映するための連番
 
     function escapeHTML(s) {
       return String(s || "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -359,6 +402,7 @@
         leaderboardList.innerHTML = '<li class="leaderboard-empty">まだ記録がありません</li>';
         return;
       }
+      // 表示順: 順位 / ニックネーム / Xの名称 / スコア
       leaderboardList.innerHTML = leaderboardCache
         .slice(0, 10)
         .map((r, i) => {
@@ -369,11 +413,11 @@
             xid && /^[A-Za-z0-9_]{1,15}$/.test(xid)
               ? `<img class="lb-avatar" src="https://unavatar.io/x/${encodeURIComponent(xid)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
                  <a class="lb-xlink" href="https://x.com/${encodeURIComponent(xid)}" target="_blank" rel="noopener noreferrer">@${escapeHTML(xid)}</a>`
-              : '<span></span><span></span>';
+              : "";
           return `<li class="leaderboard-row">
               <span class="lb-rank">${medal}</span>
-              ${xPart}
               <span class="lb-name">${escapeHTML(r.nickname)}</span>
+              <span class="lb-xname">${xPart}</span>
               <span class="lb-score">${Math.floor(r.score)}</span>
             </li>`;
         })
@@ -410,12 +454,91 @@
       rankNicknameInput.value = "";
       rankXidInput.value = "";
       rankSubmitStatus.textContent = "";
-      rankSubmitBtn.disabled = false;
+      xidVerifyState = "empty";
+      setXidPreview(null, "");
+      updateSubmitAvailability();
     }
 
     function hideScoreRegisterForm() {
       if (!scoreRegisterForm) return;
       scoreRegisterForm.classList.remove("visible");
+    }
+
+    // ニックネーム入力済み、かつ(X IDが空 または 検証済みfound)のときだけ登録可能にする
+    function updateSubmitAvailability() {
+      if (!rankSubmitBtn) return;
+      const nickname = rankNicknameInput.value.trim();
+      const xidOk = xidVerifyState === "empty" || xidVerifyState === "found";
+      rankSubmitBtn.disabled = !nickname || !xidOk;
+    }
+
+    function setXidPreview(mode, html) {
+      if (!rankXidPreview) return;
+      rankXidPreview.className = "xid-preview" + (mode ? " visible xid-" + mode : "");
+      rankXidPreview.innerHTML = html || "";
+    }
+
+    // unavatar.io へのアバター読み込み成否で、Xアカウントが実在するかを簡易検証する
+    function verifyXid(rawXid) {
+      const username = String(rawXid || "").replace(/^@/, "").trim();
+      xidVerifyToken++;
+      const token = xidVerifyToken;
+
+      if (!username) {
+        xidVerifyState = "empty";
+        setXidPreview(null, "");
+        updateSubmitAvailability();
+        return;
+      }
+      if (!/^[A-Za-z0-9_]{1,15}$/.test(username)) {
+        xidVerifyState = "error";
+        setXidPreview("error", "形式エラー：半角英数字・アンダースコアのみ、最大15文字で入力してください");
+        updateSubmitAvailability();
+        return;
+      }
+
+      xidVerifyState = "loading";
+      setXidPreview("loading", "確認中...");
+      updateSubmitAvailability();
+
+      const img = new Image();
+      img.onload = () => {
+        if (token !== xidVerifyToken) return; // 途中で入力が変わっていたら無視
+        xidVerifyState = "found";
+        setXidPreview(
+          "found",
+          `<img src="https://unavatar.io/x/${encodeURIComponent(username)}" alt="" class="xid-avatar">` +
+            `<a href="https://x.com/${encodeURIComponent(username)}" target="_blank" rel="noopener noreferrer">@${escapeHTML(username)}</a>` +
+            `<span>を確認しました</span>`
+        );
+        updateSubmitAvailability();
+      };
+      img.onerror = () => {
+        if (token !== xidVerifyToken) return;
+        xidVerifyState = "error";
+        setXidPreview("error", "このXアカウントの名称を取得できませんでした。IDを確認してください");
+        updateSubmitAvailability();
+      };
+      img.src = "https://unavatar.io/x/" + encodeURIComponent(username);
+    }
+
+    if (rankXidInput) {
+      // 入力中は再検証されるまで登録不可にする（値を空にした場合のみ即座に登録可へ戻す）
+      rankXidInput.addEventListener("input", () => {
+        const username = rankXidInput.value.trim();
+        if (!username) {
+          xidVerifyState = "empty";
+          setXidPreview(null, "");
+        } else {
+          xidVerifyState = "loading";
+          setXidPreview(null, "");
+        }
+        updateSubmitAvailability();
+      });
+      rankXidInput.addEventListener("blur", () => verifyXid(rankXidInput.value));
+    }
+    if (rankNicknameInput) {
+      rankNicknameInput.addEventListener("input", updateSubmitAvailability);
     }
 
     if (rankSubmitBtn) {
@@ -426,7 +549,12 @@
           rankNicknameInput.focus();
           return;
         }
-        const xid = rankXidInput.value.trim();
+        if (xidVerifyState !== "empty" && xidVerifyState !== "found") {
+          rankSubmitStatus.textContent = "XのIDを確認できるまで登録できません";
+          rankXidInput.focus();
+          return;
+        }
+        const xid = rankXidInput.value.trim().replace(/^@/, "");
         rankSubmitBtn.disabled = true;
         rankSubmitStatus.textContent = "登録中...";
         const record = { nickname, xid, score: Math.floor(state.score), created: Date.now() };
@@ -444,12 +572,12 @@
               loadLeaderboard();
             } else {
               rankSubmitStatus.textContent = "登録に失敗しました: " + (d.error || "");
-              rankSubmitBtn.disabled = false;
+              updateSubmitAvailability();
             }
           })
           .catch((e) => {
             rankSubmitStatus.textContent = "通信エラー: " + e.message;
-            rankSubmitBtn.disabled = false;
+            updateSubmitAvailability();
           });
       });
     }
